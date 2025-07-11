@@ -37,8 +37,8 @@ import coinespy as cpy
 from coinespy import ErrorCodes
 
 # Please change the name and address with BLE name and address of the App board under test
-BLE_NAME = "APP Board 3.1(C3-F4)"
-BLE_ADDR = "eb:a3:d0:d9:f7:24"
+BLE_NAME = "APP Board 3.1(E3-0E)"
+BLE_ADDR = "f0:7b:f9:0b:e3:0e"
 
 COM_INTF = cpy.CommInterface.BLE
 
@@ -54,6 +54,7 @@ if __name__ == "__main__":
     # Configure BLE communication
     ble_com_config = cpy.BleComConfig()
     ble_com_config.address = BLE_ADDR
+    ble_com_config.rx_buffer_size = 2048
     # ble_com_config.identifier = BLE_NAME
 
     # Open communication
@@ -64,10 +65,9 @@ if __name__ == "__main__":
     else:
         # Get and print board info
         board_info = board.get_board_info()
-        print(f"COINES SDK version: {board.lib_version}")
-        print(
-            f"BoardInfo: HW/SW ID: {hex(board_info.HardwareId)}/{hex(board_info.SoftwareId)}"
-        )
+        print('BoardInfo')
+        print(f'Software ID: v{(board_info.SoftwareId >> 12) & 0xF}.{(board_info.SoftwareId >> 6) & 0x3F}.{board_info.SoftwareId & 0x3F}')
+        print(f'Type of Board: {hex(board_info.Board)}')
         board.soft_reset()
 
         # Close communication

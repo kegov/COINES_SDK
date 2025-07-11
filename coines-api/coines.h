@@ -39,7 +39,7 @@
 #define COINES_H_
 
 #if !defined(COINES_VERSION)
-#define COINES_VERSION  "v2.10.4"
+#define COINES_VERSION  "v2.11.0"
 #endif
 
 /* C++ Guard macro - To prevent name mangling by C++ compiler */
@@ -68,12 +68,15 @@ extern "C" {
 #define COINES_STREAMING_START                     COINES_USB_STREAMING_START
 #define COINES_STREAMING_STOP                      0
 
+/* Streaming RW blocks ASCII for 'ERWB' used to identify valid RW block-enabled streaming structs */
+#define COINES_ENABLE_RW_BLOCKS_MAGIC_NUMBER       0x42575245
+
 /*! COINES_SDK USB buffer max size */
 #define COINES_DATA_BUF_SIZE                       (1024)
 
 /*! maximum no of sensor support */
 #define COINES_MIN_SENSOR_ID                       1
-#define COINES_MAX_SENSOR_ID                       2
+#define COINES_MAX_SENSOR_ID                       6
 #define COINES_MAX_SENSOR_COUNT                    (COINES_MAX_SENSOR_ID + 1)
 
 /*! COINES_SDK stream response buffer size */
@@ -271,8 +274,29 @@ extern "C" {
 /*! COINES_SDK error code - Invalid param */
 #define COINES_E_INVALID_PARAM                     -63
 
+/*! COINES_SDK error code - Unconfigured stream block */
+#define COINES_E_STREAM_UNCONFIGURED_BLOCK         -64
+
+/*! COINES_SDK error code - Invalid stream payload len */
+#define COINES_E_STREAM_INVALID_PAYLOAD_LEN        -65
+
+/*! COINES_SDK error code - Invalid stream block type */
+#define COINES_E_STREAM_INVALID_BLOCK_TYPE         -66
+
+/*! COINES_SDK error code - External flash memory full */
+#define COINES_E_EXT_FLASH_FULL                    -67
+
+/*! COINES_SDK error code - Insufficient buffer */
+#define COINES_E_INSUFFICIENT_BUFFER               -68
+
+/*! COINES_SDK error code - SPI bus busy */
+#define COINES_E_SPI_BUS_BUSY                      -69
+
+/*! COINES_SDK error code - Invalid function argument */
+#define COINES_E_INVALID_INPUT                     -70
+
 /*! Variable to hold the number of error codes */
-#define NUM_ERROR_CODES                             64
+#define NUM_ERROR_CODES                             71
 
 /**
  * EEPROM ID size in bytes
@@ -341,7 +365,14 @@ extern "C" {
 #define COINES_MAX_INT_LINE                        2
 
 /*! COINES_SDK maximum blocks to read in streaming */
+#if defined(MCU_NICLA)
+#define COINES_MAX_BLOCKS                          4
+#else
 #define COINES_MAX_BLOCKS                          10
+#endif
+
+/*! COINES_SDK maximum write block size */
+#define COINES_MAX_WRITE_BLOCK_SIZE                50
 
 /*! COINES_SDK BLE char max len */
 #define COINES_CHAR_MAX_LEN                        250
@@ -380,11 +411,9 @@ int closedir(DIR *dirp);
 #endif
 
 typedef void (*coines_tdm_callback)(uint32_t const *data);
-
 typedef void (*coines_intf_tx_callback)(void);
 typedef void (*coines_intf_rx_callback)(void);
 typedef void (*coines_critical_callback)(void);
-
 /**********************************************************************************/
 /* data structure declarations  */
 /**********************************************************************************/
@@ -673,7 +702,9 @@ enum coines_time_stamp_config {
 enum coines_streaming_mode {
     COINES_STREAMING_MODE_POLLING, /*< Polling mode streaming */
     COINES_STREAMING_MODE_INTERRUPT, /*< Interrupt mode streaming */
-    COINES_STREAMING_MODE_DMA_INTERRUPT /*< DMA Interrupt mode streaming */
+    COINES_STREAMING_MODE_DMA_INTERRUPT, /*< DMA Interrupt mode streaming */
+    COINES_STREAMING_MODE_BLOCK_IO_POLLING, /*< Block IO Polling mode streaming */
+    COINES_STREAMING_MODE_BLOCK_IO_INTERRUPT /*< Block IO Interrupt mode streaming */
 };
 
 /*!
@@ -691,6 +722,14 @@ enum coines_led {
     COINES_LED_RED, /*< Red Led */
     COINES_LED_GREEN, /*< Green Led */
     COINES_LED_BLUE /*< Blue Led */
+};
+
+/*!
+ * @brief COINES_SDK BLOCK type
+ */
+enum coines_block_type {
+    COINES_READ_BLOCK,
+    COINES_WRITE_BLOCK,
 };
 
 /*!
@@ -713,6 +752,10 @@ struct coines_streaming_blocks
     uint16_t no_of_blocks; /*< Number of blocks */
     uint8_t reg_start_addr[COINES_MAX_BLOCKS]; /*< Register start address */
     uint16_t no_of_data_bytes[COINES_MAX_BLOCKS]; /*< Number of data bytes */
+    uint32_t enable_rw_blocks; /*< Enable multi read/write blocks */
+    enum coines_block_type block_type[COINES_MAX_BLOCKS]; /*< Block type */
+    uint32_t wait_time_us[COINES_MAX_BLOCKS]; /*< Wait time after each block IO operation in micro seconds */
+    uint8_t write_data[COINES_MAX_BLOCKS][COINES_MAX_WRITE_BLOCK_SIZE]; /*< Data buffer */
 };
 
 /*!
@@ -788,6 +831,8 @@ struct ble_peripheral_info
 {
     char ble_address[COINES_CHAR_MAX_LEN]; /*< BLE device address */
     char ble_identifier[COINES_CHAR_MAX_LEN]; /*< BLE device identifier */
+    uint32_t scan_timeout; /*< BLE device scan timeout */
+    uint16_t rx_buffer_size; /*< RX response buffer size */
 };
 
 /*!
@@ -824,6 +869,11 @@ enum coines_uart_flow_control
     COINES_UART_FLOW_CONTROL_ENABLED /*< Standard UART Hw Flow Control is enabled. */
 };
 
+enum coines_pmic_read_type
+{
+    COINES_PMIC_DUMMY_CYCLIC_READ,
+    COINES_PMIC_CYCLIC_READ
+};
 
 /**********************************************************************************/
 /* function prototype declarations */
@@ -1629,7 +1679,7 @@ int8_t coines_uart_write(enum coines_uart_instance uart_instance, uint8_t *buffe
  */
 void coines_execute_critical_region(coines_critical_callback callback);
 
-#if defined(MCU_NICLA) || defined(MCU_HEAR3X)
+#if defined(MCU_NICLA) || defined(MCU_HEAR3X) || defined(MCU_APP31)
 
 /*!
  * @brief This API is used to switch off the board

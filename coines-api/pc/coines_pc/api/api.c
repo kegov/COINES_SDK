@@ -134,6 +134,9 @@ int16_t coines_open_comm_intf(enum coines_comm_intf intf_type, void *arg)
     switch (intf_type)
     {
         case COINES_COMM_INTF_USB:
+            #ifdef LOGGING_ENABLED
+            log_message("COM Mode", NULL, 0);
+            #endif
             if (arg == NULL)
             {
                 for (int i = 0; i < COINES_COMPACTIBLE_BOARDS; i++)
@@ -161,6 +164,9 @@ int16_t coines_open_comm_intf(enum coines_comm_intf intf_type, void *arg)
             break;
 
         case COINES_COMM_INTF_BLE:
+            #ifdef LOGGING_ENABLED
+            log_message("BLE Mode", NULL, 0);
+            #endif
             ret = interface_open(intf_type, arg);
             break;
 

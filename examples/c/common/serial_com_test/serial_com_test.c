@@ -26,7 +26,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
  *
- * Works only for PC target with board APP3.X
+ * Works only for PC target with board APP3.1
  **/
 
 #include <stdio.h>
@@ -71,7 +71,7 @@ int16_t coines_board_init()
 
     scom_config.baud_rate = 38400;
     scom_config.vendor_id = ROBERT_BOSCH_USB_VID;
-    scom_config.product_id = BST_APP30_CDC_USB_PID;
+    scom_config.product_id = BST_APP31_CDC_USB_PID;
     scom_config.com_port_name = "COM6";
     /* Serial com for Linux */
     //scom_config.com_port_name = "/dev/ttyACM0";
@@ -88,9 +88,8 @@ int16_t coines_board_init()
     {
         printf("\nBoard Info:");
         printf("\n\tboard_info.board:0x%02X", board_info.board);
-        printf("\n\tboard_info.hardware_id:0x%02X", board_info.hardware_id);
         printf("\n\tboard_info.shuttle_id:0x%02X", board_info.shuttle_id);
-        printf("\n\tboard_info.software_id:0x%02X", board_info.software_id);
+        printf("\n\tboard_info.software_id:v%d.%d.%d\n",  (board_info.software_id >> 12) & 0xF, (board_info.software_id >> 6) & 0x3F, board_info.software_id & 0x3F);
     }
 
     coines_delay_msec(100);

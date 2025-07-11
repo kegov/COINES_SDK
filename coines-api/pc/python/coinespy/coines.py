@@ -19,6 +19,8 @@ import sys
 
 STREAM_RSP_BUF_SIZE = 1048576
 
+COINES_ENABLE_RW_BLOCKS_MAGIC_NUMBER = 0x42575245
+
 """ COINES_SDK maximum interrupt line count """
 COINES_MAX_INT_LINE = 2
 
@@ -89,6 +91,13 @@ class ErrorCodes(Enum):
     COINES_E_DEINIT_FAILED = -61
     COINES_E_STREAMING_INIT_FAILURE = -62
     COINES_E_INVALID_PARAM = -63
+    COINES_E_STREAM_UNCONFIGURED_BLOCK = -64
+    COINES_E_STREAM_INVALID_PAYLOAD_LEN = -65
+    COINES_E_STREAM_INVALID_BLOCK_TYPE = -66
+    COINES_E_EXT_FLASH_FULL = -67
+    COINES_E_INSUFFICIENT_BUFFER  = -68
+    COINES_E_SPI_BUS_BUSY = -69
+    COINES_E_INVALID_INPUT = -70
     COINES_E_UNDEFINED_CODE = -100
 
 
@@ -190,24 +199,24 @@ class MultiIOPin(Enum):
     MINI_SHUTTLE_PIN_2_7 = 0x1D  # GPIO6
     MINI_SHUTTLE_PIN_2_8 = 0x1E  # GPIO7
 
-        # Hearable Pins pins
-    HEARABLE_SHUTTLE_PIN_1 = 0x28 #GPIO1 */
-    HEARABLE_SHUTTLE_PIN_2 = 0x29 #GPIO_SDI */
-    HEARABLE_SHUTTLE_PIN_3 = 0x2A #GPIO2 */
-    HEARABLE_SHUTTLE_PIN_4 = 0x2B #GPIO_SDO */
-    HEARABLE_SHUTTLE_PIN_5 = 0x2C #GPIO3 */
-    HEARABLE_SHUTTLE_PIN_6 = 0x2D #GPIO_SCK */
-    HEARABLE_SHUTTLE_PIN_7 = 0x2E #GPIO4 */
-    HEARABLE_SHUTTLE_PIN_8 = 0x2F #GPIO_CS0 */
-    HEARABLE_SHUTTLE_PIN_9 = 0x30 #I2C_SDA */
-    HEARABLE_SHUTTLE_PIN_10 = 0x31 #GPIO_CS1 */
-    HEARABLE_SHUTTLE_PIN_11 = 0x32 #I2C_SCL */
-    HEARABLE_SHUTTLE_PIN_12 = 0x33 #GPIO_CS2 */ 
-    HEARABLE_SHUTTLE_PIN_13 = 0x34 #INT0 */
-    HEARABLE_SHUTTLE_PIN_14 = 0x35 #UART_TX */ 
-    HEARABLE_SHUTTLE_PIN_15 = 0x36 #INT1 */
-    HEARABLE_SHUTTLE_PIN_16 = 0x37 #UART_RX */ 
-    HEARABLE_SHUTTLE_PIN_17 = 0x38 #INT2 */ 
+    # Hearable Pins pins
+    HEARABLE_SHUTTLE_PIN_1 = 0x28   # GPIO1 */
+    HEARABLE_SHUTTLE_PIN_2 = 0x29   # GPIO_SDI */
+    HEARABLE_SHUTTLE_PIN_3 = 0x2A   # GPIO2 */
+    HEARABLE_SHUTTLE_PIN_4 = 0x2B   # GPIO_SDO */
+    HEARABLE_SHUTTLE_PIN_5 = 0x2C   # GPIO3 */
+    HEARABLE_SHUTTLE_PIN_6 = 0x2D   # GPIO_SCK */
+    HEARABLE_SHUTTLE_PIN_7 = 0x2E   # GPIO4 */
+    HEARABLE_SHUTTLE_PIN_8 = 0x2F   # GPIO_CS0 */
+    HEARABLE_SHUTTLE_PIN_9 = 0x30   # I2C_SDA */
+    HEARABLE_SHUTTLE_PIN_10 = 0x31  # GPIO_CS1 */
+    HEARABLE_SHUTTLE_PIN_11 = 0x32  # I2C_SCL */
+    HEARABLE_SHUTTLE_PIN_12 = 0x33  # GPIO_CS2 */
+    HEARABLE_SHUTTLE_PIN_13 = 0x34  # INT0 */
+    HEARABLE_SHUTTLE_PIN_14 = 0x35  # UART_TX */
+    HEARABLE_SHUTTLE_PIN_15 = 0x36  # INT1 */
+    HEARABLE_SHUTTLE_PIN_16 = 0x37  # UART_RX */
+    HEARABLE_SHUTTLE_PIN_17 = 0x38  # INT2 */
 
 
 class SensorInterface(Enum):
@@ -220,14 +229,16 @@ class I2CBus(Enum):
     """ Used to define the I2C type """
     BUS_I2C_0 = 0
     BUS_I2C_1 = 1
-    BUS_I2C_MAX = 2
+    BUS_I2C_INT = 2
+    BUS_I2C_MAX = 3
 
 
 class SPIBus(Enum):
     """ Used to define the SPI type """
     BUS_SPI_0 = 0
     BUS_SPI_1 = 1
-    BUS_SPI_MAX = 2
+    BUS_SPI_INT = 2
+    BUS_SPI_MAX = 3
 
 
 class StreamingMode(Enum):
@@ -235,6 +246,8 @@ class StreamingMode(Enum):
     STREAMING_MODE_POLLING = 0    # Polling mode streaming
     STREAMING_MODE_INTERRUPT = 1  # Interrupt mode streaming
     STREAMING_MODE_DMA_INTERRUPT = 2  # DMA Interrupt mode streaming
+    STREAMING_MODE_BLOCK_IO_POLLING = 3    # Block Polling mode streaming
+    STREAMING_MODE_BLOCK_IO_INTERRUPT = 4  # Block Interrupt mode streaming
 
 
 class StreamingState(Enum):
@@ -271,6 +284,12 @@ class SamplingUnits(Enum):
     """ Defines sampling unit"""
     SAMPLING_TIME_IN_MICRO_SEC = 0x01  # sampling unit in micro second
     SAMPLING_TIME_IN_MILLI_SEC = 0x02  # sampling unit in milli second
+
+
+class BlockType(Enum): 
+    """ Defines streaming block type """
+    READ_BLOCK = 0
+    WRITE_BLOCK = 1
 
 
 class PinConfigInfo(ct.Structure):
@@ -313,10 +332,13 @@ class StreamingDMAConfig(ct.Structure):
 
 class StreamingBlocks(ct.Structure):
     """ Variables to store the streaming address blocks """
-    _fields_ = [('NoOfBlocks', ct.c_uint16),        # Number of blocks.
-                # Register start address.
-                ('RegStartAddr', ct.c_uint8 * 10),
-                ('NoOfDataBytes', ct.c_uint16 * 10)]     # Number of data bytes.
+    _fields_ = [('NoOfBlocks', ct.c_uint16),            # Number of blocks.
+                ('RegStartAddr', ct.c_uint8 * 10),      # Register start address.
+                ('NoOfDataBytes', ct.c_uint16 * 10),    # Number of data bytes.
+                ('EnableRWBlocks', ct.c_uint32),        # Enable read/write blocks.
+                ('BlockType', ct.c_int * 10),
+                ('WaitTimeUs', ct.c_uint32 * 10),       # Wait time after each block IO operation in micro seconds.
+                ('WriteData', (ct.c_uint8 * 50) * 10)] # Data buffer.
 
 
 class StreamingConfig(ct.Structure):
@@ -345,6 +367,8 @@ class CBleComConfig(ct.Structure):
     """ Variables to store ctype BLE com config settings """
     _fields_ = [("Address", ct.c_char * 250),
                 ("Identifier", ct.c_char * 250),
+                ("ScanTimeout", ct.c_uint32),
+                ("RxBufferSize", ct.c_uint16)
                 ]
 
 
@@ -362,9 +386,11 @@ class CSerialComConfig(ct.Structure):
 class BleComConfig():
     """ Class to store BLE com config settings"""
 
-    def __init__(self, address: str = None, identifier: str = None):
+    def __init__(self, address: str = None, identifier: str = None, timeout: ct.c_uint32 = 0, rx_buffer_size: ct.c_uint16 = 0):
         self.address = address
         self.identifier = identifier
+        self.scan_timeout = timeout
+        self.rx_buffer_size = rx_buffer_size
 
 
 class SerialComConfig:
@@ -565,6 +591,8 @@ class CoinesBoard:
                 str(ble_com_config.address), 'utf-8')
             c_ble_com_config.Identifier = bytes(
                 str(ble_com_config.identifier), 'utf-8')
+            c_ble_com_config.ScanTimeout = ble_com_config.scan_timeout
+            c_ble_com_config.RxBufferSize = ble_com_config.rx_buffer_size
             arg_ptr = ct.pointer(c_ble_com_config)
         ret = self._lib.coines_open_comm_intf(self.__pc_interface, arg_ptr)
         self.error_code = CoinesBoard.convert_to_signed_error_code(ret)

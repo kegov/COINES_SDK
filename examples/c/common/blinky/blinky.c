@@ -63,21 +63,22 @@ int main(void)
 		//    "\n Unable to connect with NICLA Board ! \n" " 1. Check if the board is connected and powered on. \n" " 2. Check if Application Board USB driver is installed. \n"
         //    " 3. Check if board is in use by another application. (Insufficient permissions to access USB) \n");
         exit(result);
-    }
+   }
 
-    while (1)
-    {
+   (void)coines_set_led(COINES_LED_RED, COINES_LED_STATE_OFF);
 
-        result = coines_set_led(COINES_LED_GREEN, COINES_LED_STATE_ON);
-        //led_setcolorandintensity(&led_dev, BLUE, 0x80);	//Color:blue ; Output current = intensity/256 * Imax[set to 30mA] 
-        coines_delay_msec(1000);
+   while (1)
+   {
 
-        //led_setcolorandintensity(&led_dev, BLUE, 0x00);	//Color:blue ; Output current = intensity/256 * Imax[set to 30mA] 
-        result = coines_set_led(COINES_LED_GREEN, COINES_LED_STATE_OFF);
-        coines_delay_msec(1000);
-    }
+      result = coines_set_led(COINES_LED_GREEN, COINES_LED_STATE_ON);
+      //led_setcolorandintensity(&led_dev, BLUE, 0x80);	//Color:blue ; Output current = intensity/256 * Imax[set to 30mA] 
+      coines_delay_msec(1000);
 
-    coines_close_comm_intf(COINES_COMM_INTF_USB, NULL);
+      //led_setcolorandintensity(&led_dev, BLUE, 0x00);	//Color:blue ; Output current = intensity/256 * Imax[set to 30mA] 
+      result = coines_set_led(COINES_LED_GREEN, COINES_LED_STATE_OFF);
+      coines_delay_msec(1000);
+   }
 
-    return result;
+   coines_close_comm_intf(COINES_COMM_INTF_USB, NULL);
+   return result;
 }

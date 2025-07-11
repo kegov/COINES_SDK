@@ -47,20 +47,22 @@ extern "C" {
 /* macro definitions */
 /**********************************************************************************/
 /*! COINES_SDK maximum timestamp size */
-#define TIMESTAMP_SIZE                    UINT8_C(6)
+#define TIMESTAMP_SIZE                                UINT8_C(6)
 
 /*! COINES_SDK maximum sensor for streaming */
-#define STREAM_MAX_COUNT_T                6
+#define STREAM_MAX_COUNT_T                            6
 
 /*! COINES_SDK streaming hardware pin state mask */
-#define COINES_STREAM_INT_PIN_MASK        0x0F
+#define COINES_STREAM_INT_PIN_MASK                    0x0F
 
 /*! COINES_SDK streaming hardware pin state mask */
-#define COINES_STREAM_INT_PIN_STATE_MASK  0x10
+#define COINES_STREAM_INT_PIN_STATE_MASK              0x10
 
-#define STREAM_BUFF_SIZE                  UINT16_C(COM_STREAM_BUFF_SIZE + COINES_MAX_HEADER_LEN + TIMESTAMP_SIZE)
+/* COINES_SDK streaming buffer size */
+#define STREAM_BUFF_SIZE                              UINT16_C(COM_STREAM_BUFF_SIZE + COINES_MAX_HEADER_LEN + TIMESTAMP_SIZE)
 
-#define STREAM_TRANSFER_TIMEOUT           1
+/* COINES_SDK streaming transfer timeout */
+#define STREAM_TRANSFER_TIMEOUT_MS                    UINT32_C(100)
 
 /**********************************************************************************/
 /* data structure declarations  */
@@ -70,7 +72,8 @@ extern "C" {
  * @brief timestamp config
  */
 enum coines_stream_timestamp {
-    COINES_STREAM_NO_TIMESTAMP = 0, /*< no timestamp */
+    COINES_STREAM_NO_TIMESTAMP = 0,
+    /*< no timestamp */
     COINES_STREAM_USE_TIMESTAMP = 1 /*< Timestamp is present */
 };
 
@@ -78,10 +81,15 @@ enum coines_stream_timestamp {
  * @brief streaming mode
  */
 enum coines_stream_mode {
-    COINES_STREAM_MODE_INTERRUPT, /*< interrupt*/
-    COINES_STREAM_MODE_POLLING, /*< polling*/
-    COINES_STREAM_MODE_FIFO_POLLING, /*<fifo polling*/
-    COINES_STREAM_MODE_DMA_INTERRUPT /*< dma interrupt */
+    COINES_STREAM_MODE_INTERRUPT,
+    /*< interrupt*/
+    COINES_STREAM_MODE_POLLING,
+    /*< polling*/
+    COINES_STREAM_MODE_FIFO_POLLING,
+    /*<fifo polling*/
+    COINES_STREAM_MODE_DMA_INTERRUPT /*< dma interrupt */,
+    COINES_STREAM_MODE_BLOCK_IO_POLLING, /*< block io polling */
+    COINES_STREAM_MODE_BLOCK_IO_INTERRUPT /*< block io interrupt */
 };
 
 struct coines_stream_settings
@@ -109,7 +117,7 @@ struct coines_stream_clear_on_write
 struct coines_poll_streaming
 {
     uint8_t sensor_id; /*< streaming sensor id */
-    uint8_t timestamp;  /*< 1- enable /0- disable time stamp for corresponding sensor */
+    uint8_t timestamp; /*< 1- enable /0- disable time stamp for corresponding sensor */
     enum coines_sensor_intf intf; /*< Sensor Interface */
     uint8_t intf_bus; /*< Bus Interface */
     uint8_t intf_addr; /*< I2C address/SPI CS pin */
@@ -128,6 +136,9 @@ struct coines_poll_streaming
     uint32_t sampling_period_us;
     uint32_t gst_ticks_counter;
     uint32_t gst_multiplier;
+    uint8_t block_type[COINES_MAX_BLOCKS]; /*< Block type */
+    uint32_t wait_time_us[COINES_MAX_BLOCKS]; /*< Wait time after each block IO operation in micro seconds */
+    uint8_t write_data[COINES_MAX_BLOCKS][COINES_MAX_WRITE_BLOCK_SIZE]; /*< Data buffer */
 };
 
 /*!
@@ -153,6 +164,9 @@ struct coines_int_streaming
     uint8_t intline_info[COINES_MAX_INT_LINE]; /*< interrupt line number */
     uint8_t DATA_intline[COINES_MAX_INT_LINE]; /*< interrupt line state */
     uint64_t packet_timestamp_us; /*< packet timestamp */
+    uint8_t block_type[COINES_MAX_BLOCKS]; /*< Block type */
+    uint32_t wait_time_us[COINES_MAX_BLOCKS]; /*< Wait time after each block IO operation in micro seconds */
+    uint8_t write_data[COINES_MAX_BLOCKS][COINES_MAX_WRITE_BLOCK_SIZE]; /*< Data buffer */
 };
 
 union coines_streaming
@@ -164,16 +178,17 @@ union coines_streaming
 /*!
  * @brief data stored and retrived from job queue
  */
-typedef struct
+typedef struct __attribute__((packed))
 {
     uint32_t multiio_pin;
     uint32_t packet_no;
-    uint64_t timestamp_us;
+    volatile uint64_t timestamp_us;
 } coines_bridge_job_data_t;
 
 /**********************************************************************************/
 /* functions */
 /**********************************************************************************/
+
 /*!
  * @brief This API is used to configure global sampling timer period for all polling streaming.
  *
@@ -225,11 +240,10 @@ void send_streaming_response(void);
  *
  */
 int16_t dma_int_streaming_config(uint8_t cmd,
-                             uint8_t *payload,
-                             uint16_t payload_length,
-                             uint8_t *resp,
-                             uint16_t *resp_length);
-
+                                 uint8_t *payload,
+                                 uint16_t payload_length,
+                                 uint8_t *resp,
+                                 uint16_t *resp_length);
 
 /*!
  * @brief This API is used to transmit the buffered streaming data

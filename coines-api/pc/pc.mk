@@ -23,6 +23,7 @@ ifeq ($(COINES_BACKEND),COINES_BRIDGE)
 
     INCLUDEPATHS_COINES += \
     . \
+    ../ \
     serial_com \
     ble_com \
     ble_com/simpleble-0.6.0/simpleble \
@@ -38,6 +39,7 @@ else
 
     INCLUDEPATHS_COINES += \
     . \
+    ../ \
     coines_api \
     comm_intf \
     comm_driver \

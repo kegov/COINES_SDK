@@ -32,7 +32,6 @@
 #include <stdio.h>
 
 #include "coines.h"
-#include "mcu_app3x_interface.h"
 
 /******************************************************************************/
 /*! Macro for external temperature sensor - I2C address */

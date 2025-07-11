@@ -42,6 +42,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include "w25_nand_error_codes.h"
+#include "coines.h"
 #ifdef __cplusplus
 extern "C"
 {

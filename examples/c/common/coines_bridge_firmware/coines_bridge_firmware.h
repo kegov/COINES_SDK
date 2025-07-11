@@ -46,16 +46,21 @@ extern "C" {
 /**********************************************************************************/
 /* macro definitions */
 /**********************************************************************************/
-/* COM_RW_BUFF_SIZE - Configurable in compile time through makefile, default value is 2048 */
 #define READ_BUFF_SIZE                    UINT16_C(COM_RW_BUFF_SIZE + COINES_MAX_HEADER_LEN)
 
 #define WRITE_BUFF_SIZE                   UINT16_C(COM_RW_BUFF_SIZE + COINES_MAX_HEADER_LEN + TIMESTAMP_SIZE)
 
+#if defined(MCU_APP30) || defined(MCU_APP31) || defined(MCU_HEAR3X)
+#define STREAM_BUFF_MAX_SIZE              UINT16_C(50 * 1024) /* 50 MB */
+#elif defined(MCU_NICLA)
+#define STREAM_BUFF_MAX_SIZE              UINT16_C(1024) /* 1 MB */
+#endif
+
+#define STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE     512
+
 /**********************************************************************************/
 /* data structure declarations  */
 /**********************************************************************************/
-
-
 
 #ifdef __cplusplus
 }

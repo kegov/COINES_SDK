@@ -402,6 +402,8 @@ static void services_init(void)
     ble_bas_init_t bas_init = {0};
     nrf_ble_qwr_init_t qwr_init = {0};
 
+    memset(&m_qwr, 0, sizeof(m_qwr));
+
     /* Initialize Queued Write Module. */
     qwr_init.error_handler = nrf_qwr_error_handler;
 
@@ -841,6 +843,16 @@ void ble_service_init(ble_service_init_t *init_handle)
 
     nrf_ringbuf_init(&m_ringbuf);
 
+}
+
+void ble_sd_enable(void)
+{
+    nrf_sdh_enable_request();
+}
+
+void ble_sd_disable(void)
+{
+    nrf_sdh_disable_request();
 }
 
 size_t ble_service_nus_write(const void *buffer, size_t len)

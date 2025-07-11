@@ -26,7 +26,7 @@
  * IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
  * POSSIBILITY OF SUCH DAMAGE.
 
- * Works for MCU_APP30 and MCU_APP31 targets
+ * Works for PC, MCU_APP30 and MCU_APP31 targets
  **/
 
 /******************************************************************************/

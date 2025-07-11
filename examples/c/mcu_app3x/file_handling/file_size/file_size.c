@@ -41,17 +41,17 @@
 
 int main()
 {
-    struct stat st;
-    coines_open_comm_intf(COINES_COMM_INTF_USB, NULL); //Wait here till serial port is opened
+   struct stat st;
+   coines_open_comm_intf(COINES_COMM_INTF_USB, NULL); //Wait here till serial port is opened
 
-    if(stat(FILE_NAME, &st) != 0)
-    {
-        printf("File doesn't exist - %s",FILE_NAME);
-        return -1;
-    }
-    printf("File size is %d bytes", (int)st.st_size);
+   if(stat(FILE_NAME, &st) != 0)
+   {
+      printf("File doesn't exist - %s",FILE_NAME);
+      return -1;
+   }
+   printf("File size is %d bytes", (int)st.st_size);
 
-    coines_close_comm_intf(COINES_COMM_INTF_USB, NULL);
+   coines_close_comm_intf(COINES_COMM_INTF_USB, NULL);
 
-    return 0;
+   return 0;
 }

@@ -55,7 +55,8 @@ BMI08X_READ_WRITE_LEN = 44
 
 
 class Bmi08xAccelRegs(Enum):
-    """ Used to store Accel register addresses"""
+    """Used to store Accel register addresses"""
+
     #    Accel Chip Id register
     BMI08X_REG_ACCEL_CHIP_ID = 0x00
 
@@ -290,7 +291,8 @@ BMI08X_REG_GYRO_CHIP_ID = 0x00
 
 
 class Bmi08xGyroRegs(Enum):
-    """ Used to store Gyro register addresses """
+    """Used to store Gyro register addresses"""
+
     #    Gyro X LSB data register
     BMI08X_REG_GYRO_X_LSB = 0x02
 
@@ -632,8 +634,10 @@ BMI08X_ACCEL_INT2_FWM_POS = 5
 
 # *************************** Data structures *****************************
 
+
 class ApiErrorCodes(Enum):
-    """ Enum to represent API error code """
+    """Enum to represent API error code"""
+
     # API success code
     BMI08X_OK = 0
     # API error codes
@@ -649,13 +653,15 @@ class ApiErrorCodes(Enum):
 
 
 class SensorType(Enum):
-    """ Used to define Sensor type"""
+    """Used to define Sensor type"""
+
     ACCEL = 0
     GYRO = 1
 
 
 class Bmi08xAccelIntChannel(Enum):
-    """ Enum to select accelerometer Interrupt pins """
+    """Enum to select accelerometer Interrupt pins"""
+
     # interrupt Channel 1 for accel sensor
     BMI08X_INT_CHANNEL_1 = 0
     # interrupt Channel 2 for accel sensor
@@ -663,7 +669,8 @@ class Bmi08xAccelIntChannel(Enum):
 
 
 class Bmi08xGyroIntChannel(Enum):
-    """ Enum to select gyroscope Interrupt pins """
+    """Enum to select gyroscope Interrupt pins"""
+
     # interrupt Channel 3 for gyro sensor
     BMI08X_INT_CHANNEL_3 = 0
     # interrupt Channel 4 for gyro sensor
@@ -671,7 +678,8 @@ class Bmi08xGyroIntChannel(Enum):
 
 
 class Bmi08xAccelIntTypes(Enum):
-    """ Enum to select accelerometer interrupts """
+    """Enum to select accelerometer interrupts"""
+
     BMI08X_ACCEL_INT_DATA_RDY = 0
     # Accel data ready interrupt
     BMI08X_ACCEL_INT_SYNC_DATA_RDY = 1
@@ -684,9 +692,10 @@ class Bmi08xAccelIntTypes(Enum):
 
 
 class Bmi08xGyroIntTypes(Enum):
-    """ Enum to select gyroscope interrupts """
+    """Enum to select gyroscope interrupts"""
+
     BMI08X_GYRO_INT_DATA_RDY = 0  # Gyro data ready interrupt
-    BMI08X_GYRO_INT_FIFO_WM = 1   # Gyro FIFO watermark interrupt
+    BMI08X_GYRO_INT_FIFO_WM = 1  # Gyro FIFO watermark interrupt
     BMI08X_GYRO_INT_FIFO_FULL = 2  # Gyro FIFO full interrupt
 
 
@@ -725,6 +734,7 @@ def lsb_to_mps2(val, accel_range, bit_width):
 
 # *************************** Accel Interrupt functions *****************************
 
+
 def bmi08a_set_int_pin_config(self, int_config: dict) -> ErrorCodes:
     """This API configures the pins which fire the interrupt signal
     when any accel interrupt occurs.
@@ -736,7 +746,7 @@ def bmi08a_set_int_pin_config(self, int_config: dict) -> ErrorCodes:
         ErrorCodes (Enum): 0 -> Success; < 0 -> Fail
     """
     rslt = ApiErrorCodes.BMI08X_OK
-    int_channel = int_config['int_channel']
+    int_channel = int_config["int_channel"]
     is_channel_valid = True
     int_types = Bmi08xAccelIntTypes
     int_channels = Bmi08xAccelIntChannel
@@ -753,21 +763,36 @@ def bmi08a_set_int_pin_config(self, int_config: dict) -> ErrorCodes:
         # Read interrupt pin configuration register
         data = self.read(SensorType.ACCEL, reg_addr, 1)[0]
 
-        data = hfunc.set_bits(data, BMI08X_ACCEL_INT_LVL_MASK,
-                              int_config['int_pin_cfg']['lvl'],  BMI08X_ACCEL_INT_LVL_POS)
-        data = hfunc.set_bits(data, BMI08X_ACCEL_INT_OD_MASK,
-                              int_config['int_pin_cfg']['output_mode'], BMI08X_ACCEL_INT_OD_POS)
+        data = hfunc.set_bits(
+            data,
+            BMI08X_ACCEL_INT_LVL_MASK,
+            int_config["int_pin_cfg"]["lvl"],
+            BMI08X_ACCEL_INT_LVL_POS,
+        )
+        data = hfunc.set_bits(
+            data,
+            BMI08X_ACCEL_INT_OD_MASK,
+            int_config["int_pin_cfg"]["output_mode"],
+            BMI08X_ACCEL_INT_OD_POS,
+        )
 
-        if int_config['int_type'] == int_types.BMI08X_ACCEL_SYNC_INPUT:
-            data = hfunc.set_bits_pos_0(
-                data, BMI08X_ACCEL_INT_EDGE_MASK, BMI08X_ENABLE)
-            data = hfunc.set_bits(data, BMI08X_ACCEL_INT_IN_MASK,
-                                  int_config['int_pin_cfg']['enable_int_pin'], BMI08X_ACCEL_INT_IN_POS)
+        if int_config["int_type"] == int_types.BMI08X_ACCEL_SYNC_INPUT:
+            data = hfunc.set_bits_pos_0(data, BMI08X_ACCEL_INT_EDGE_MASK, BMI08X_ENABLE)
+            data = hfunc.set_bits(
+                data,
+                BMI08X_ACCEL_INT_IN_MASK,
+                int_config["int_pin_cfg"]["enable_int_pin"],
+                BMI08X_ACCEL_INT_IN_POS,
+            )
             data = hfunc.set_bit_val_0(data, BMI08X_ACCEL_INT_IN_MASK)
 
         else:
-            data = hfunc.set_bits(data, BMI08X_ACCEL_INT_IO_MASK,
-                                  int_config['int_pin_cfg']['enable_int_pin'], BMI08X_ACCEL_INT_IO_POS)
+            data = hfunc.set_bits(
+                data,
+                BMI08X_ACCEL_INT_IO_MASK,
+                int_config["int_pin_cfg"]["enable_int_pin"],
+                BMI08X_ACCEL_INT_IO_POS,
+            )
             data = hfunc.set_bit_val_0(data, BMI08X_ACCEL_INT_IN_MASK)
 
         # Write to interrupt pin configuration register
@@ -779,7 +804,7 @@ def bmi08a_set_int_pin_config(self, int_config: dict) -> ErrorCodes:
     return rslt
 
 
-def set_accel_data_ready_int(self, int_config:dict) -> ErrorCodes:
+def set_accel_data_ready_int(self, int_config: dict) -> ErrorCodes:
     """This API sets the data ready interrupt for accel sensor
 
     Args:
@@ -790,19 +815,22 @@ def set_accel_data_ready_int(self, int_config:dict) -> ErrorCodes:
     """
     rslt = ApiErrorCodes.BMI08X_OK
     data = 0
-    conf = int_config['int_pin_cfg']['enable_int_pin']
+    conf = int_config["int_pin_cfg"]["enable_int_pin"]
     int_channels = Bmi08xAccelIntChannel
 
     # Read interrupt map register
     data = self.read(
-        SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_INT1_INT2_MAP_DATA.value, 1)[0]
-    int_channel = int_config['int_channel']
+        SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_INT1_INT2_MAP_DATA.value, 1
+    )[0]
+    int_channel = int_config["int_channel"]
     if int_channel == int_channels.BMI08X_INT_CHANNEL_1:
-        data = hfunc.set_bits(data, BMI08X_ACCEL_INT1_DRDY_MASK,
-                              conf, BMI08X_ACCEL_INT1_DRDY_POS)
+        data = hfunc.set_bits(
+            data, BMI08X_ACCEL_INT1_DRDY_MASK, conf, BMI08X_ACCEL_INT1_DRDY_POS
+        )
     elif int_channel == int_channels.BMI08X_INT_CHANNEL_2:
-        data = hfunc.set_bits(data, BMI08X_ACCEL_INT2_DRDY_MASK,
-                              conf, BMI08X_ACCEL_INT2_DRDY_POS)
+        data = hfunc.set_bits(
+            data, BMI08X_ACCEL_INT2_DRDY_MASK, conf, BMI08X_ACCEL_INT2_DRDY_POS
+        )
     else:
         rslt = ApiErrorCodes.BMI08X_E_INVALID_INPUT
 
@@ -810,8 +838,12 @@ def set_accel_data_ready_int(self, int_config:dict) -> ErrorCodes:
     rslt = bmi08a_set_int_pin_config(self, int_config)
 
     # Write to interrupt map register
-    self.write(self.bus_instance,
-               Bmi08xAccelRegs.BMI08X_REG_ACCEL_INT1_INT2_MAP_DATA.value, data, SensorType.ACCEL)
+    self.write(
+        self.bus_instance,
+        Bmi08xAccelRegs.BMI08X_REG_ACCEL_INT1_INT2_MAP_DATA.value,
+        data,
+        SensorType.ACCEL,
+    )
 
     return rslt
 
@@ -827,16 +859,16 @@ def bmi08a_set_int_config(self, int_config):
         ErrorCodes (Enum): 0 -> Success; < 0 -> Fail
     """
     rslt = ApiErrorCodes.BMI08X_OK
-    int_type = int_config['int_type']
+    int_type = int_config["int_type"]
     int_types = Bmi08xAccelIntTypes
     if int_type == int_types.BMI08X_ACCEL_INT_DATA_RDY:
         # Data ready interrupt
         rslt = set_accel_data_ready_int(self, int_config)
     else:
-        raise Exception(
-            f"{int_type} Interrupt type not supported in the API!\n")
+        raise Exception(f"{int_type} Interrupt type not supported in the API!\n")
 
     return rslt
+
 
 # *************************** Gyro Interrupt functions *****************************
 
@@ -851,30 +883,48 @@ def bmi08g_set_int_pin_config(self, int_config):
     Returns:
         ErrorCodes (Enum): 0 -> Success; < 0 -> Fail
     """
-    int_channel = int_config['int_channel']
+    int_channel = int_config["int_channel"]
     int_channels = Bmi08xGyroIntChannel
 
     # Read interrupt configuration register
-    data = self.read(SensorType.ACCEL,
-                     Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_CONF.value, 1)[0]
+    data = self.read(
+        SensorType.ACCEL, Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_CONF.value, 1
+    )[0]
 
     #  Interrupt pin or channel 3
     if int_channel == int_channels.BMI08X_INT_CHANNEL_3:
         # Update data with user configured bmi08x_int_cfg structure
         data = hfunc.set_bits_pos_0(
-            data, BMI08X_GYRO_INT3_LVL_MASK, int_config['int_pin_cfg']['lvl'])
-        data = hfunc.set_bits(data, BMI08X_GYRO_INT3_OD_MASK,
-                              int_config['int_pin_cfg']['output_mode'], BMI08X_GYRO_INT3_OD_POS)
+            data, BMI08X_GYRO_INT3_LVL_MASK, int_config["int_pin_cfg"]["lvl"]
+        )
+        data = hfunc.set_bits(
+            data,
+            BMI08X_GYRO_INT3_OD_MASK,
+            int_config["int_pin_cfg"]["output_mode"],
+            BMI08X_GYRO_INT3_OD_POS,
+        )
     elif int_channel == int_channels.BMI08X_INT_CHANNEL_4:
         # Update data with user configured bmi08x_int_cfg structure
-        data = hfunc.set_bits(data, BMI08X_GYRO_INT4_LVL_MASK,
-                              int_config['int_pin_cfg']['lvl'], BMI08X_GYRO_INT4_LVL_POS)
-        data = hfunc.set_bits(data, BMI08X_GYRO_INT4_OD_MASK,
-                              int_config['int_pin_cfg']['output_mode'], BMI08X_GYRO_INT4_OD_POS)
+        data = hfunc.set_bits(
+            data,
+            BMI08X_GYRO_INT4_LVL_MASK,
+            int_config["int_pin_cfg"]["lvl"],
+            BMI08X_GYRO_INT4_LVL_POS,
+        )
+        data = hfunc.set_bits(
+            data,
+            BMI08X_GYRO_INT4_OD_MASK,
+            int_config["int_pin_cfg"]["output_mode"],
+            BMI08X_GYRO_INT4_OD_POS,
+        )
 
     #  write to interrupt configuration register
-    self.write(self.bus_instance,
-               Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_CONF.value, data, SensorType.GYRO)
+    self.write(
+        self.bus_instance,
+        Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_CONF.value,
+        data,
+        SensorType.GYRO,
+    )
 
 
 def set_gyro_data_ready_int(self, int_config):
@@ -888,21 +938,22 @@ def set_gyro_data_ready_int(self, int_config):
     """
     rslt = ApiErrorCodes.BMI08X_OK
     data = [0, 0]
-    conf = int_config['int_pin_cfg']['enable_int_pin']
+    conf = int_config["int_pin_cfg"]["enable_int_pin"]
     int_channels = Bmi08xGyroIntChannel
 
     # read interrupt map register
     data[0] = self.read(
-        SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_MAP.value, 1)[0]
-    int_channel = int_config['int_channel']
+        SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_MAP.value, 1
+    )[0]
+    int_channel = int_config["int_channel"]
 
     # Data to enable new data ready interrupt
     if int_channel == int_channels.BMI08X_INT_CHANNEL_3:
-        data[0] = hfunc.set_bits_pos_0(
-            data[0], BMI08X_GYRO_INT3_MAP_MASK, conf)
+        data[0] = hfunc.set_bits_pos_0(data[0], BMI08X_GYRO_INT3_MAP_MASK, conf)
     elif int_channel == int_channels.BMI08X_INT_CHANNEL_4:
         data[0] = hfunc.set_bits(
-            data[0], BMI08X_GYRO_INT3_MAP_MASK, conf, BMI08X_GYRO_INT3_MAP_POS)
+            data[0], BMI08X_GYRO_INT3_MAP_MASK, conf, BMI08X_GYRO_INT3_MAP_POS
+        )
     else:
         rslt = ApiErrorCodes.BMI08X_E_INVALID_INPUT
 
@@ -914,15 +965,23 @@ def set_gyro_data_ready_int(self, int_config):
         data[1] = BMI08X_GYRO_DRDY_INT_DISABLE_VAL
 
     # Write to interrupt map register
-    self.write(self.bus_instance,
-               Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_MAP.value, data[0], SensorType.GYRO)
+    self.write(
+        self.bus_instance,
+        Bmi08xGyroRegs.BMI08X_REG_GYRO_INT3_INT4_IO_MAP.value,
+        data[0],
+        SensorType.GYRO,
+    )
 
     # set input interrupt configuration
     bmi08g_set_int_pin_config(self, int_config)
 
     # Write data to interrupt control register
-    self.write(self.bus_instance,
-               Bmi08xGyroRegs.BMI08X_REG_GYRO_INT_CTRL.value, data[1], SensorType.GYRO)
+    self.write(
+        self.bus_instance,
+        Bmi08xGyroRegs.BMI08X_REG_GYRO_INT_CTRL.value,
+        data[1],
+        SensorType.GYRO,
+    )
 
     return rslt
 
@@ -938,21 +997,20 @@ def bmi08g_set_int_config(self, int_config):
         ErrorCodes (Enum): 0 -> Success; < 0 -> Fail
     """
     rslt = ApiErrorCodes.BMI08X_OK
-    int_type = int_config['int_type']
+    int_type = int_config["int_type"]
     int_types = Bmi08xGyroIntTypes
 
     if int_type == int_types.BMI08X_GYRO_INT_DATA_RDY:
         # Data ready interrupt
         rslt = set_gyro_data_ready_int(self, int_config)
     else:
-        raise Exception(
-            f"{int_type} Interrupt type not supported in the API!\n")
+        raise Exception(f"{int_type} Interrupt type not supported in the API!\n")
 
     return rslt
 
 
 class BMI08X:
-    """ Test api for the shuttle bmi085 with app30 board """
+    """Test api for the shuttle bmi085 with app30 board"""
 
     SHUTTLE_ID = 0x46
     I2C_ADDRESS_ACCEL = 0x18
@@ -966,24 +1024,23 @@ class BMI08X:
     GYRO_DATA_REG_LEN = 6
     TEMP_DATA_REG_LEN = 2
 
-
     def __init__(self, bus, interface):
         print(f"++++++++ {type(bus).__name__} ++++++++")
         self.interface = interface
         self.board = cpy.CoinesBoard()
         self.api_error_code = 0
         self.accel_cfg = dict(
-            ODR=BMI08X_ACCEL_ODR_1600_HZ,
+            ODR=BMI08X_ACCEL_ODR_800_HZ,
             RANGE=BMI085_ACCEL_RANGE_16G,
             BANDWIDTH=BMI08X_ACCEL_BW_NORMAL,
             POWER_MODE=BMI08X_ACCEL_PM_ACTIVE,
-            POWER_ENABLE=BMI08X_ACCEL_POWER_ENABLE
+            POWER_ENABLE=BMI08X_ACCEL_POWER_ENABLE,
         )
         self.gyro_cfg = dict(
-            ODR=BMI08X_GYRO_BW_230_ODR_2000_HZ,
+            ODR=BMI08X_GYRO_BW_47_ODR_400_HZ,
             RANGE=BMI08X_GYRO_RANGE_250_DPS,
-            BANDWIDTH=BMI08X_GYRO_BW_230_ODR_2000_HZ,
-            POWER_MODE=BMI08X_GYRO_PM_NORMAL
+            BANDWIDTH=BMI08X_GYRO_BW_47_ODR_400_HZ,
+            POWER_MODE=BMI08X_GYRO_PM_NORMAL,
         )
 
         self.bst_get_board_details()
@@ -999,15 +1056,14 @@ class BMI08X:
         else:
             self.read_board = self.board.read_i2c
             self.write_board = self.board.write_i2c
-            self.sensor_selection = [
-                self.I2C_ADDRESS_ACCEL, self.I2C_ADDRESS_GYRO]
+            self.sensor_selection = [self.I2C_ADDRESS_ACCEL, self.I2C_ADDRESS_GYRO]
             if isinstance(bus, cpy.I2CBus):
                 self.bus_instance = bus
             else:
                 raise ValueError("Wrong bus instance")
 
     def init_board(self):
-        """ Initialize board for Read and write """
+        """Initialize board for Read and write"""
         self.set_vdd_vddio(vdd=0, vddio=0)
         self.config_bus()
         self.set_vdd_vddio(vdd=3.3, vddio=3.3)
@@ -1019,35 +1075,34 @@ class BMI08X:
         self.read_chip_id()
 
     def bst_get_board_details(self):
-        """ Initial checking of the connected board """
+        """Initial checking of the connected board"""
         self.board.open_comm_interface(cpy.CommInterface.USB)
-        self.verify_error(
-            keyword="Open Communication interface", exit_flag=True)
+        self.verify_error(keyword="Open Communication interface", exit_flag=True)
         board_info = self.board.get_board_info()
-        print(
-            f'BoardInfo: HW/SW ID: {hex(board_info.HardwareId)}/{hex(board_info.SoftwareId)}')
+        print('BoardInfo')
+        print(f'Software ID: v{(board_info.SoftwareId >> 12) & 0xF}.{(board_info.SoftwareId >> 6) & 0x3F}.{board_info.SoftwareId & 0x3F}')
+        print(f'Type of Board: {hex(board_info.Board)}')
         print(f"ShuttleID: {hex(board_info.ShuttleID)}")
         if board_info.HardwareId == 0:
-            print('Seems like there is no board communication. Stop')
+            print("Seems like there is no board communication. Stop")
             self.board.close_comm_interface()
             sys.exit()
         if board_info.ShuttleID != self.SHUTTLE_ID:
-            print('Seems like you are not using BMI085 shuttle board. Stop')
+            print("Seems like you are not using BMI085 shuttle board. Stop")
             self.board.close_comm_interface()
             sys.exit()
 
     def set_vdd_vddio(self, vdd, vddio):
-        """ Sets the vdd and/or vddio """
-        self.board.set_shuttleboard_vdd_vddio_config(
-            vdd_val=vdd, vddio_val=vddio)
+        """Sets the vdd and/or vddio"""
+        self.board.set_shuttleboard_vdd_vddio_config(vdd_val=vdd, vddio_val=vddio)
         self.verify_error(keyword="set vdd, vddio", exit_flag=True)
 
     def read_chip_id(self):
         """Reads the chip id"""
         chip_id = self.read(SensorType.ACCEL, 0, 1)
-        print('Chip ID accel: ' + hex(chip_id[0]))
+        print("Chip ID accel: " + hex(chip_id[0]))
         chip_id = self.read(SensorType.GYRO, 0, 1)
-        print('Chip ID gyro: ' + hex(chip_id[0]))
+        print("Chip ID gyro: " + hex(chip_id[0]))
 
     def read_temperature(self):
         """
@@ -1058,32 +1113,44 @@ class BMI08X:
         data = self.read(SensorType.ACCEL, self.TEMP_DATA_ADDR, self.TEMP_DATA_REG_LEN)
         # Refer datasheet for temperature formula
         temp = hfunc.twos_comp(data[0] * 8 + (data[1] >> 5), 11) * 0.125 + 23
-        print('\nTemperature: %.2f' % temp)
+        print("\nTemperature: %.2f" % temp)
 
     def set_accel_power_mode(self):
-        """ This API sets the power mode of the accel sensor """
-        power_mode = self.accel_cfg['POWER_MODE']
-        power_enable = self.accel_cfg['POWER_ENABLE']
+        """This API sets the power mode of the accel sensor"""
+        power_mode = self.accel_cfg["POWER_MODE"]
+        power_enable = self.accel_cfg["POWER_ENABLE"]
 
         # write to register
-        self.write(self.bus_instance, Bmi08xAccelRegs.BMI08X_REG_ACCEL_PWR_CONF.value,
-                   power_mode, SensorType.ACCEL)
+        self.write(
+            self.bus_instance,
+            Bmi08xAccelRegs.BMI08X_REG_ACCEL_PWR_CONF.value,
+            power_mode,
+            SensorType.ACCEL,
+        )
         self.board.delay_milli_sec(5)
-        self.write(self.bus_instance, Bmi08xAccelRegs.BMI08X_REG_ACCEL_PWR_CTRL.value,
-                   power_enable, SensorType.ACCEL)
+        self.write(
+            self.bus_instance,
+            Bmi08xAccelRegs.BMI08X_REG_ACCEL_PWR_CTRL.value,
+            power_enable,
+            SensorType.ACCEL,
+        )
         self.board.delay_milli_sec(5)
 
     def set_gyro_power_mode(self):
-        """ This API sets the power mode of the gyro sensor """
-        power_mode = self.gyro_cfg['POWER_MODE']
+        """This API sets the power mode of the gyro sensor"""
+        power_mode = self.gyro_cfg["POWER_MODE"]
 
         # write to register
-        self.write(self.bus_instance, Bmi08xGyroRegs.BMI08X_REG_GYRO_LPM1.value,
-                   power_mode, SensorType.GYRO)
+        self.write(
+            self.bus_instance,
+            Bmi08xGyroRegs.BMI08X_REG_GYRO_LPM1.value,
+            power_mode,
+            SensorType.GYRO,
+        )
         self.board.delay_milli_sec(30)
 
     def config_bus(self):
-        """ Decide to do the bus configuration"""
+        """Decide to do the bus configuration"""
         if self.interface == cpy.SensorInterface.SPI:
             self.deconfig_spi()
             self.config_spi()
@@ -1092,92 +1159,117 @@ class BMI08X:
             self.config_i2c()
 
     def config_spi(self):
-        """ Configuration for SPI """
+        """Configuration for SPI"""
 
         self.board.set_pin_config(
-            self.SPI_CS_ACCEL, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH)
+            self.SPI_CS_ACCEL, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH
+        )
         self.verify_error(keyword="configuring Pin", exit_flag=True)
         self.board.set_pin_config(
-            self.SPI_CS_GYRO, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH)
+            self.SPI_CS_GYRO, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH
+        )
         self.verify_error(keyword="configuring Pin", exit_flag=True)
         # Set PS pin of gyro to LOW for proper protocol selection
         self.board.set_pin_config(
-            cpy.MultiIOPin.SHUTTLE_PIN_9, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW)
+            cpy.MultiIOPin.SHUTTLE_PIN_9, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW
+        )
         self.verify_error(keyword="configuring Pin", exit_flag=True)
 
         self.board.config_spi_bus(
-            self.bus_instance, self.SPI_CS_ACCEL, cpy.SPISpeed.SPI_10_MHZ, cpy.SPIMode.MODE3)
+            self.bus_instance,
+            self.SPI_CS_ACCEL,
+            cpy.SPISpeed.SPI_10_MHZ,
+            cpy.SPIMode.MODE3,
+        )
         self.verify_error(keyword="configuring spi bus", exit_flag=True)
 
     def config_i2c(self):
-        """ Configuration for I2C """
+        """Configuration for I2C"""
         #  CSB1 pin is made low for selecting I2C protocol*/
         self.board.set_pin_config(
-            cpy.MultiIOPin.SHUTTLE_PIN_8, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW)
+            cpy.MultiIOPin.SHUTTLE_PIN_8, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW
+        )
         # SDO pin is made low for selecting I2C address 0x76*/
         self.board.set_pin_config(
-            cpy.MultiIOPin.SHUTTLE_PIN_SDO, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW)
+            cpy.MultiIOPin.SHUTTLE_PIN_SDO, cpy.PinDirection.OUTPUT, cpy.PinValue.LOW
+        )
 
         self.board.config_i2c_bus(
-            self.bus_instance, self.I2C_ADDRESS_ACCEL, cpy.I2CMode.STANDARD_MODE)
+            self.bus_instance, self.I2C_ADDRESS_ACCEL, cpy.I2CMode.STANDARD_MODE
+        )
         self.verify_error(keyword="configuring i2c bus", exit_flag=True)
 
         # Set PS pin of gyro to HIGH for proper protocol selection
         self.board.set_pin_config(
-            cpy.MultiIOPin.SHUTTLE_PIN_9, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH)
+            cpy.MultiIOPin.SHUTTLE_PIN_9, cpy.PinDirection.OUTPUT, cpy.PinValue.HIGH
+        )
         self.verify_error(keyword="configuring Pin", exit_flag=True)
 
     def deconfig_i2c(self):
-        """ De-configuration I2C """
+        """De-configuration I2C"""
         self.board.deconfig_i2c_bus(self.bus_instance)
-    
+
     def deconfig_spi(self):
-        """ De-configuration SPI """
+        """De-configuration SPI"""
         self.board.deconfig_spi_bus(self.bus_instance)
 
     def set_accel_meas_conf(self):
-        """ This API sets the output data rate, range and bandwidth of accel sensor."""
-        odr = self.accel_cfg['ODR']
-        bandwidth = self.accel_cfg['BANDWIDTH']
-        accel_range = self.accel_cfg['RANGE']
+        """This API sets the output data rate, range and bandwidth of accel sensor."""
+        odr = self.accel_cfg["ODR"]
+        bandwidth = self.accel_cfg["BANDWIDTH"]
+        accel_range = self.accel_cfg["RANGE"]
 
         accel_conf_reg_data = self.read(
-            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value, 1)[0]
+            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value, 1
+        )[0]
         accel_range_reg_data = self.read(
-            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_RANGE.value, 1)[0]
+            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_RANGE.value, 1
+        )[0]
         data = [accel_conf_reg_data, accel_range_reg_data]
 
         # Update data with new ODR and bw values
         data[0] = hfunc.set_bits_pos_0(data[0], BMI08X_ACCEL_ODR_MASK, odr)
         data[0] = hfunc.set_bits(
-            data[0], BMI08X_ACCEL_BW_MASK, bandwidth, BMI08X_ACCEL_BW_POS)
+            data[0], BMI08X_ACCEL_BW_MASK, bandwidth, BMI08X_ACCEL_BW_POS
+        )
 
         #  Update data with current range values
         data[1] = hfunc.set_bits_pos_0(data[1], BMI08X_ACCEL_RANGE_MASK, accel_range)
 
         # write to register
-        self.write(self.bus_instance, Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value,
-                   data[0], SensorType.ACCEL)
-        self.write(self.bus_instance, Bmi08xAccelRegs.BMI08X_REG_ACCEL_RANGE.value,
-                   data[1], SensorType.ACCEL)
+        self.write(
+            self.bus_instance,
+            Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value,
+            data[0],
+            SensorType.ACCEL,
+        )
+        self.write(
+            self.bus_instance,
+            Bmi08xAccelRegs.BMI08X_REG_ACCEL_RANGE.value,
+            data[1],
+            SensorType.ACCEL,
+        )
 
         # check if written value is same as read value
         write_val = data
         [accel_conf, accel_range] = self.read(
-            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value, 2)
+            SensorType.ACCEL, Bmi08xAccelRegs.BMI08X_REG_ACCEL_CONF.value, 2
+        )
         assert write_val == [accel_conf, accel_range]
 
         return accel_range
 
     def set_gyro_meas_conf(self):
-        """ This API sets the output data rate, range and bandwidth of gyro sensor."""
-        odr = self.gyro_cfg['ODR']
-        gyro_range = self.gyro_cfg['RANGE']
+        """This API sets the output data rate, range and bandwidth of gyro sensor."""
+        odr = self.gyro_cfg["ODR"]
+        gyro_range = self.gyro_cfg["RANGE"]
 
         gyro_range_reg_data = self.read(
-            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value, 1)[0]
+            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value, 1
+        )[0]
         gyro_bw_reg_data = self.read(
-            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_BANDWIDTH.value, 1)[0]
+            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_BANDWIDTH.value, 1
+        )[0]
         data = [gyro_range_reg_data, gyro_bw_reg_data]
 
         #  Update data with current range values
@@ -1187,15 +1279,24 @@ class BMI08X:
         data[1] = hfunc.set_bits_pos_0(data[1], BMI08X_GYRO_BW_MASK, odr)
 
         # write to register
-        self.write(self.bus_instance,
-                   Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value, data[0], SensorType.GYRO)
-        self.write(self.bus_instance,
-                   Bmi08xGyroRegs.BMI08X_REG_GYRO_BANDWIDTH.value, data[1], SensorType.GYRO)
+        self.write(
+            self.bus_instance,
+            Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value,
+            data[0],
+            SensorType.GYRO,
+        )
+        self.write(
+            self.bus_instance,
+            Bmi08xGyroRegs.BMI08X_REG_GYRO_BANDWIDTH.value,
+            data[1],
+            SensorType.GYRO,
+        )
 
         # check if written value is same as read value
         write_val = data
         [gyro_range, gyro_bw] = self.read(
-            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value, 2)
+            SensorType.GYRO, Bmi08xGyroRegs.BMI08X_REG_GYRO_RANGE.value, 2
+        )
         assert write_val == [gyro_range, gyro_bw]
 
         return gyro_range
@@ -1210,30 +1311,31 @@ class BMI08X:
         if sensor_selection == self.SPI_CS_ACCEL:
             num_of_bytes += 1
 
-        data = self.read_board(self.bus_instance, reg &
-                               0x7F, num_of_bytes, sensor_selection)
+        data = self.read_board(
+            self.bus_instance, reg & 0x7F, num_of_bytes, sensor_selection
+        )
         self.verify_error(keyword="Device read", exit_flag=False)
 
         if sensor_selection == self.SPI_CS_ACCEL:
             data.pop(0)
         return data
 
-    def write(self, bus, register_address, register_value,  sensor):
-        """ Use to Write data """
+    def write(self, bus, register_address, register_value, sensor):
+        """Use to Write data"""
         sensor_selection = self.sensor_selection[sensor.value]
-        self.write_board(bus, register_address,
-                         register_value, sensor_selection)
+        self.write_board(bus, register_address, register_value, sensor_selection)
         self.verify_error(keyword="Device write", exit_flag=False)
 
     def verify_error(self, keyword=None, exit_flag=False):
-        """ Display error code and Close the communication interface if error occurs """
+        """Display error code and Close the communication interface if error occurs"""
         if self.board.error_code != ErrorCodes.COINES_SUCCESS:
             print(f"{keyword} failure: {self.board.error_code}")
             if exit_flag:
                 self.board.close_comm_interface()
                 sys.exit()
+
     def verify_api_error(self, keyword=None, exit_flag=False):
-        """ Display API error code and Close the communication interface if error occurs """
+        """Display API error code and Close the communication interface if error occurs"""
         if self.api_error_code != ApiErrorCodes.BMI08X_OK:
             print(f"{keyword} failure: {self.api_error_code}")
             if exit_flag:
@@ -1241,7 +1343,7 @@ class BMI08X:
                 sys.exit()
 
     def close_comm(self, verify_reset=False):
-        """ Close the communication interface """
+        """Close the communication interface"""
         self.set_vdd_vddio(vdd=0, vddio=0)
         self.board.delay_milli_sec(100)
         self.board.soft_reset()

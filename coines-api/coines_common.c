@@ -35,6 +35,7 @@
 /**********************************************************************/
 #include <stdint.h>
 #include <string.h>
+#include <stdio.h>
 
 /*********************************************************************/
 /* own header files */
@@ -117,7 +118,11 @@ const char *get_coines_error_str(int16_t error_code)
 		{ COINES_E_PTHREAD_FAILED, "[COINES Error] Comm Pthread failed" },
         { COINES_E_READ_TIMEOUT, "[COINES Error] Read timeout" },
         { COINES_E_STREAMING_INIT_FAILURE, "[COINES Error] Streaming not initialized" },
-        { COINES_E_INVALID_PARAM, "[COINES Error] Invalid parameter" }
+        { COINES_E_INVALID_PARAM, "[COINES Error] Invalid parameter" },
+        { COINES_E_STREAM_UNCONFIGURED_BLOCK, "[COINES Error] Unconfigured stream block" },
+        { COINES_E_STREAM_INVALID_PAYLOAD_LEN, "[COINES Error] Invalid stream payload length" },
+        { COINES_E_STREAM_INVALID_BLOCK_TYPE, "[COINES Error] Invalid stream block type" },
+        { COINES_E_EXT_FLASH_FULL , "[COINES Error] External flash memory full" }
     };
 
     for (uint16_t i = 0; i < sizeof(error_mappings)/sizeof(error_mappings[0]); i++)
@@ -152,4 +157,21 @@ bool is_system_little_endian() {
     uint8_t *byte_ptr = (uint8_t*)&value;  
     // If the least significant byte is 1, the system is little-endian
     return byte_ptr[0] == 1;
+}
+
+/**
+ * @brief Converts a version string (e.g., "v2.11.0") to a 16-bit integer.
+ *        Format: (major << 12) | (minor << 6) | patch
+ *
+ */
+uint16_t coines_version_string_to_int(const char *version_str)
+{
+    int major, minor, patch;
+
+    if (sscanf(version_str, "v%d.%d.%d", &major, &minor, &patch) != 3) {
+        
+        return 0;
+    }
+
+    return ((uint16_t)major << 12) | ((uint16_t)minor << 6) | (uint16_t)patch;
 }

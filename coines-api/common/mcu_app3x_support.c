@@ -298,8 +298,7 @@ int16_t coines_get_board_info(struct coines_board_info *data)
         data->board = 0xFE;
 #endif
         data->hardware_id = 0x11;
-        
-        data->software_id = 0x10;
+        data->software_id = coines_version_string_to_int(COINES_VERSION);
 #if (defined(MCU_APP30)||defined(MCU_APP31))
         data->shuttle_id = get_shuttle_id();
         if (app30_eeprom_romid(data->eeprom_id))
@@ -852,7 +851,6 @@ static void gpiohandler(nrfx_gpiote_pin_t pin, nrf_gpiote_polarity_t action)
         }
     }
 }
-
 
 /*!
  *  @brief This API is used to execute the function inside critical region.

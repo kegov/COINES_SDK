@@ -61,6 +61,7 @@
 /*********************************************************************/
 extern uint8_t mqueue_full_mask;
 uint8_t proto_stop_resp_arr[PROTO_STOP_RESP_LEN] = PROTO_STREAM_STOP_RESP_ARR;
+extern bool stop_stream_triggered;
 /*********************************************************************/
 /* static variables */
 /*********************************************************************/
@@ -90,6 +91,13 @@ static void *protocol_decode_thread_func(void *arg)
         {
             /* Decode the packet from cicular buffer and add it to the mqueue */
             (void) decode_and_enqueue_packet();
+        }
+        else{
+            if (stop_stream_triggered)
+            {
+                /* To obtain non-streaming responses after stop streaming, clear the streamed data queue so packets in the circular buffer can be processed */
+                mqueue_reset_queue();
+            }
         }
     }
 

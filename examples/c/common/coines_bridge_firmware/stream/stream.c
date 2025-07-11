@@ -54,7 +54,8 @@
 #include "coines.h"
 #include "stream.h"
 #include "job_queue.h"
-#include "mbuf.h"
+#include "coines_bridge_firmware.h"
+#include "circular_buffer_mcu.h"
 
 /**********************************************************************************/
 /* local macro definitions */
@@ -89,7 +90,21 @@ extern bool int_pin_usage_native_emulated[COINES_SHUTTLE_PIN_MAX];
 
 bool bhi_streaming_configured = false;
 
-extern void mbuf_user_evt_handler(mbuf_evt_type_t event);
+extern circular_buffer_t stream_cbuf;
+
+extern enum coines_comm_intf comm_intf;
+
+extern volatile bool usb_stream_active;
+
+extern volatile bool ble_stream_active;
+
+extern void ble_service_enable(void);
+extern void ble_service_disable(void);
+extern int8_t switch_pmic_cyclic_read(enum coines_pmic_read_type read_type);
+
+extern circular_buffer_t stream_cbuf;
+extern uint8_t stream_buff[STREAM_BUFF_MAX_SIZE];
+
 
 /**********************************************************************************/
 /* static variables */
@@ -1007,7 +1022,7 @@ static void streaming_interrupt_send_response(stream_descriptor_t *stream_p)
         tx_buf[1] = (uint8_t) (datatosend + DECODER_STRM_INT_RSP_OVERHEAD + DECODER_END_INDICATORS_SIZE);
 
         /* Add to buffer */
-        mbuf_add_to_buffer(tx_buf, tx_buf[1]);
+        (void)circular_buffer_put(&stream_cbuf, tx_buf, tx_buf[1]);
 
         packetstosend--;
         packetnumber++;
@@ -1789,11 +1804,30 @@ void stream_start(void)
     uint8_t polling_stream_count = 0;
     enum coines_pin_interrupt_mode interrupt_mode;
 
+    if (comm_intf == COINES_COMM_INTF_USB)
+    {
+        /* Prevent interface switching during streaming */
+        usb_stream_active = true;
+
+#if defined(MCU_APP31) || defined(MCU_HEAR3X)
+        /* Disable the nRF SoftDevice to improve streaming performance */
+        ble_service_disable();
+
+        /* Switch PMIC cyclic read to dummy read to avoid watchdog timer reset and ensure uninterrupted data streaming */
+        switch_pmic_cyclic_read(COINES_PMIC_DUMMY_CYCLIC_READ);
+#endif /* MCU_APP31 || MCU_HEAR3X || MCU_NICLA */   
+    }
+    else
+    {
+        /* Prevent interface switching during streaming */
+        ble_stream_active = true;
+    }
+
     if ((stream_active_count > 0) && (stream_settings.stream_mode == STREAM_MODE_INTERRUPT))
     {
-        /* Intialize job_queue and mbuf for interrupt streaming */
+        /* Intialize job_queue and circular buffer for interrupt streaming */
         (void)job_queue_init();
-        (void)mbuf_init(mbuf_user_evt_handler);
+        (void)circular_buffer_init(&stream_cbuf, stream_buff, sizeof(stream_buff));
     }
     for (uint8_t i = 0; i < stream_active_count; i++)
     {
@@ -1939,10 +1973,13 @@ void stream_start(void)
  */
 void stream_stop(void)
 {
+    int16_t rslt = 0;
     stream_descriptor_t *stream_p;
     stream_fifo_descriptor_t *fifo_stream_p;
     uint8_t polling_stream_count = 0;
     uint8_t interrupt_stream_count = 0;
+    uint16_t cbuff_len = 0;
+    uint8_t temp_buff[STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE];
 
     for (uint8_t i = 0; i < stream_active_count; i++)
     {
@@ -1991,9 +2028,49 @@ void stream_stop(void)
     }
     else if(interrupt_stream_count > 0)
     {
-        /* Deinit the job_queue and mbuf */
+        /* Deinit the job_queue and circular buffer */
         job_queue_deinit();
-        mbuf_deinit();
+        /* Transfer all data available in the circular buffer to prevent potential packet corruption */
+        cbuff_len = circular_buffer_size(&stream_cbuf);
+
+        while(cbuff_len >= STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE)
+        {
+            memset(temp_buff, 0, STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE);
+            rslt = circular_buffer_get(&stream_cbuf, temp_buff, STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE);
+            if (rslt == COINES_SUCCESS)
+            {
+                coines_write_intf(comm_intf, temp_buff, STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE);
+                cbuff_len -= STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE;
+            }
+        }
+        if (cbuff_len > 0)
+        {
+            memset(temp_buff, 0, STREAM_BUFF_USB_EXT_FLASH_WRITE_SIZE);
+            rslt = circular_buffer_get(&stream_cbuf, temp_buff, cbuff_len);
+            if (rslt == COINES_SUCCESS)
+            {
+                coines_write_intf(comm_intf, temp_buff, cbuff_len);
+            }
+        }
+        circular_buffer_reset(&stream_cbuf);
+    }
+
+    if (comm_intf == COINES_COMM_INTF_USB)
+    {
+        usb_stream_active = false;
+
+#if defined(MCU_APP31) || defined(MCU_HEAR3X)
+        /* Enable the nRF SoftDevice*/
+        /* TODO - Handle ble initializion properly */
+        ble_service_enable();
+    
+        /* Switch to normal PMIC cyclic read instead of dummy read */
+        switch_pmic_cyclic_read(COINES_PMIC_CYCLIC_READ);
+#endif /* MCU_APP31 || MCU_HEAR3X || MCU_NICLA */
+    }
+    else
+    {
+        ble_stream_active = false;
     }
 
     /*TODO: delete any pending int */

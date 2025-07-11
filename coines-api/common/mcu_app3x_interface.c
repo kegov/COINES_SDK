@@ -35,116 +35,134 @@
 /* header includes */
 /**********************************************************************************/
 #include <stdint.h>
-#include "mcu_app3x_support.h"
 #include "mcu_app3x_interface.h"
 #include "coines_common.h"
 
 /**********************************************************************************/
 /* local macro definitions */
 /**********************************************************************************/
-#define REG_ADDR_BUFFER_SIZE 2
 
 /**********************************************************************************/
 /* global variables */
 /**********************************************************************************/
-
-/**********************************************************************************/
-/* static variables */
-/**********************************************************************************/
-/* Indicates if operation on I2C has completed. */
-static volatile uint8_t coines_i2c_txrx_status[COINES_I2C_BUS_MAX] = { COINES_I2C_TX_FAILED, COINES_I2C_TX_FAILED, COINES_I2C_TX_FAILED };
-
-static const nrfx_twim_t coines_i2c_instance[COINES_I2C_BUS_MAX] =
-{ NRFX_TWIM_INSTANCE(TWIM0_INSTANCE), NRFX_TWIM_INSTANCE(TWIM1_INSTANCE), NRFX_TWIM_INSTANCE(TWIM0_INSTANCE) };
-
-static nrfx_twim_config_t coines_i2c_config[COINES_I2C_BUS_MAX] = {
-    {                                                  /* Primary sensor interface */
-        .scl = I2C0_SEN_SCL_PIN, .sda = I2C0_SEN_SDA_PIN, .frequency = NRF_TWIM_FREQ_400K,
-        .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
-    }, 
-    { /* Temperature (Adapter) interface */
-#if defined(MCU_APP30)
-        .scl = I2C1_EXTERNAL_TEMP_SCL_PIN, .sda = I2C1_EXTERNAL_TEMP_SDA_PIN,
-#else
-        .scl = I2C1_INTERNAL_TEMP_SCL_PIN, .sda = I2C1_INTERNAL_TEMP_SDA_PIN,
-#endif
-        .frequency = NRF_TWIM_FREQ_400K, .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
-    },
-    { /* Temperature (Adapter) interface */
-        .scl = I2C1_EXTERNAL_TEMP_SCL_PIN, .sda = I2C1_EXTERNAL_TEMP_SDA_PIN,
-        .frequency = NRF_TWIM_FREQ_400K, .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
-    }
-
-};
-
-typedef void (*coines_i2c_callback)(nrfx_twim_evt_t const *, void *);
-
-static void coines_i2c0_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
-static void coines_i2c1_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
-static void coines_i2c_int_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
-
-static coines_i2c_callback coines_i2c_event_handler[COINES_I2C_BUS_MAX] =
-{ coines_i2c0_event_handler, coines_i2c1_event_handler, coines_i2c_int_event_handler };
-
-static int16_t coines_i2c_bus_recover(enum coines_i2c_bus bus);
-
-static void coines_get_i2c_pin_map(enum coines_i2c_bus bus, enum coines_i2c_pin_map pin_map);
-static int16_t coines_set_spi_instance(enum coines_spi_bus bus, uint8_t enable);
-static int16_t coines_set_i2c_instance(enum coines_i2c_bus bus, uint8_t enable);
-static bool coines_is_spi_enabled(enum coines_spi_bus bus);
-static uint8_t prepare_reg_addr_buffer(uint8_t *reg_addr_buffer, uint16_t reg_addr, uint8_t transfer_bits);
-
-static volatile bool is_i2c_enabled[COINES_I2C_BUS_MAX] = { false, false, false };
-
-static const nrfx_spim_t coines_spi_instance[COINES_SPI_BUS_MAX] =
-{ NRFX_SPIM_INSTANCE(SPIM0_INSTANCE), NRFX_SPIM_INSTANCE(SPIM1_INSTANCE), NRFX_SPIM_INSTANCE(SPIM1_INSTANCE) };
-
-static volatile bool is_spi_enabled[COINES_SPI_BUS_MAX] = { false, false , false};
-
-static nrfx_spim_config_t coines_spi_config[COINES_SPI_BUS_MAX] = {
-    {              /* Primary sensor interface */
-        .sck_pin = SPI0_SEN_SCK_PIN, .mosi_pin = SPI0_SEN_MOSI_PIN, .miso_pin = SPI0_SEN_MISO_PIN,
-        .ss_pin = NRFX_SPIM_PIN_NOT_USED, .ss_active_high = false,
-        .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF, .frequency = NRF_SPIM_FREQ_4M,
-        .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST, NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
-    }, 
-    {           /* OIS controller interface */
-        .sck_pin = SPI1_OIS_SCK_PIN, .mosi_pin = SPI1_OIS_MOSI_PIN, .miso_pin = SPI1_OIS_MISO_PIN,
-        .ss_pin = NRFX_SPIM_PIN_NOT_USED, .ss_active_high = false,
-        .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF, .frequency = NRF_SPIM_FREQ_4M,
-        .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST, NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
-    },
-    {              /* Primary sensor interface */
-        .sck_pin = SPI0_SEN_SCK_PIN, .mosi_pin = SPI0_SEN_MOSI_PIN, .miso_pin = SPI0_SEN_MISO_PIN,
-        .ss_pin = NRFX_SPIM_PIN_NOT_USED, .ss_active_high = false,
-        .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF, .frequency = NRF_SPIM_FREQ_4M,
-        .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST, NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
-    }, 
-};
-
-static nrfx_spim_xfer_desc_t coines_spi_txrx_desc[COINES_SPI_BUS_MAX]; /**< SPI transfer descriptor. */
-
 /* idx = 0 ==> Primary sensor I2C/SPI interface; User configurable */
 
 /* idx = 1 ==> Ble temperature I2C interface; Enabled internally but
  *              can be reconfigured to other sensors if requested
  *              e.g. adapter board, since the on-board (BLE)
- *              temperature sensor has low priority */
+ *              temperature sensor has low priority
+ *              For APP3.1 and hearable board, PMIC is connected */
 
-/* idx = 2 ==> External flash SPI interface; By default enabled */
+/* idx = 2 ==> External flash SPI interface; User configurable */
 /* idx = 3 ==> Secondary sensor SPI interface; User configurable */
 
-/*
-| W25 | PMIC | S0  | S1  |
-|-----|------|-----|-----|
-| SPI2| I2C1 | SPI3|     |
-| SPI2| I2C1 | I2C0|     |
-| SPI2| I2C1 | SPI3| I2C0|
-| SPI2| I2C1 | I2C0| SPI3|
+/* 
+
+### Instance & Bus Allocation for APP3.1  
+
+| Flash Chip (Instance)| PMIC (Instance)    | Prim Sensor (Instance) | Sec Sensor (Instance)  |
+|----------------------|--------------------|------------------------|------------------------|
+| SPI_BUS_INT (SPIM2)  | I2C_BUS_INT (TWI1) | SPI_BUS_0 (SPIM3)      |                        |
+| SPI_BUS_INT (SPIM2)  | I2C_BUS_INT (TWI1) |                        | SPI_BUS_1 (SPIM3)      |
+| SPI_BUS_INT (SPIM2)  | I2C_BUS_INT (TWI1) | I2C_BUS_0 (TWI0)       |                        |
+| SPI_BUS_INT (SPIM2)  | I2C_BUS_INT (TWI1) | SPI_BUS_0 (SPIM3)      | I2C_BUS_1 (TWI0)       |
+| SPI_BUS_INT (SPIM2)  | I2C_BUS_INT (TWI1) | I2C_BUS_0 (TWI0)       | SPI_BUS_1 (SPIM3)      |
+
+
 */
+uint8_t coines_spi_twi_instances[4] = { 0, 0, 0, 0 };
 
-static uint8_t coines_spi_twi_instances[4] = { 0, 0, 1, 0 };
+/**********************************************************************************/
+/* static function declartions */
+/**********************************************************************************/
+static void coines_i2c0_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
+static void coines_i2c1_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
+static void coines_i2c_int_event_handler(nrfx_twim_evt_t const *p_event, void *p_context);
+static int16_t coines_i2c_bus_recover(enum coines_i2c_bus bus);
+static void coines_get_i2c_pin_map(enum coines_i2c_bus bus, enum coines_i2c_pin_map pin_map);
+int16_t coines_set_spi_instance(enum coines_spi_bus bus, uint8_t enable);
+static int16_t coines_set_i2c_instance(enum coines_i2c_bus bus, uint8_t enable);
+bool coines_is_spi_enabled(enum coines_spi_bus bus);
+uint8_t prepare_reg_addr_buffer(uint8_t *reg_addr_buffer, uint16_t reg_addr, uint8_t transfer_bits);
 
+/**********************************************************************************/
+/* static variables */
+/**********************************************************************************/
+
+static const nrfx_twim_config_t i2c_primary_pin_config = {
+    .scl = I2C0_SEN_SCL_PIN, .sda = I2C0_SEN_SDA_PIN, .frequency = NRF_TWIM_FREQ_400K,
+    .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
+};
+static const nrfx_twim_config_t i2c_secondary_pin_config = {
+    .scl = I2C1_SEN_SCL_PIN, .sda = I2C1_SEN_SDA_PIN, .frequency = NRF_TWIM_FREQ_400K,
+    .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
+};
+static const nrfx_twim_config_t i2c_internal_pin_config = {
+    .scl = I2C_INTERNAL_SCL_PIN, .sda = I2C_INTERNAL_SDA_PIN, .frequency = NRF_TWIM_FREQ_400K,
+    .interrupt_priority = (uint8_t)APP_IRQ_PRIORITY_HIGH, .hold_bus_uninit = false
+};
+
+static coines_i2c_intf_t coines_i2c_intf[COINES_I2C_BUS_MAX] = {
+    /* COINES_I2C_BUS_0 - TWI0 PRIMARY PINS */
+    { .instance = TWIM0_INSTANCE, .peripheral_instance = NRFX_TWIM0_INSTANCE, .enabled = false,
+      .txrx_status = COINES_I2C_TX_FAILED, .config = i2c_primary_pin_config,
+      .event_handler = coines_i2c0_event_handler },
+
+    /* COINES_I2C_BUS_1 - TWI0 SECONDARY PINS */
+    { .instance = TWIM0_INSTANCE, .peripheral_instance = NRFX_TWIM0_INSTANCE, .enabled = false,
+      .txrx_status = COINES_I2C_TX_FAILED, .config = i2c_secondary_pin_config,
+      .event_handler = coines_i2c1_event_handler },
+
+    /* COINES_I2C_BUS_INT - TWI1 INTERNAL PINS */
+    { .instance = TWIM1_INSTANCE, .peripheral_instance = NRFX_TWIM1_INSTANCE, .enabled = false,
+      .txrx_status = COINES_I2C_TX_FAILED, .config = i2c_internal_pin_config,
+      .event_handler = coines_i2c_int_event_handler }
+};
+
+static const nrfx_spim_config_t spi_primary_pin_config = {
+    .sck_pin = SPI0_SEN_SCK_PIN, .mosi_pin = SPI0_SEN_MOSI_PIN, .miso_pin = SPI0_SEN_MISO_PIN,
+    .ss_pin = NRFX_SPIM_PIN_NOT_USED, .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF,
+    .frequency = NRF_SPIM_FREQ_4M, .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST,
+    NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
+};
+
+static const nrfx_spim_config_t spi_secondary_pin_config = {
+    .sck_pin = SPI1_SEN_SCK_PIN, .mosi_pin = SPI1_SEN_MOSI_PIN, .miso_pin = SPI1_SEN_MISO_PIN,
+    .ss_pin = NRFX_SPIM_PIN_NOT_USED, .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF,
+    .frequency = NRF_SPIM_FREQ_4M, .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST,
+    NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
+};
+
+static const nrfx_spim_config_t spi_internal_pin_config = {
+    .sck_pin = SPI_FLASH_SCK_PIN, .mosi_pin = SPI_FLASH_MOSI_PIN, .miso_pin = SPI_FLASH_MISO_PIN,
+    .ss_pin = NRFX_SPIM_PIN_NOT_USED, .irq_priority = NRFX_SPIM_DEFAULT_CONFIG_IRQ_PRIORITY, .orc = 0xFF,
+    .frequency = NRF_SPIM_FREQ_4M, .mode = NRF_SPIM_MODE_0, .bit_order = NRF_SPIM_BIT_ORDER_MSB_FIRST,
+    NRFX_SPIM_DEFAULT_EXTENDED_CONFIG
+};
+
+coines_spi_intf_t coines_spi_intf[COINES_SPI_BUS_MAX] = {
+    /* COINES_SPI_BUS_0 - SPIM3 PRIMARY PINS */
+    {
+        .instance = SPIM3_INSTANCE, .peripheral_instance = NRFX_SPIM3_INSTANCE,
+        .enabled = false,
+        .config = spi_primary_pin_config,
+        .txrx_desc = { .p_tx_buffer = NULL, .tx_length = 0, .p_rx_buffer = NULL, .rx_length = 0 }
+    },
+
+    /* COINES_SPI_BUS_1 - SPIM3 SECONDARY PINS */
+    { .instance = SPIM3_INSTANCE, .peripheral_instance = NRFX_SPIM3_INSTANCE, .enabled = false,
+      .config = spi_secondary_pin_config,
+      .txrx_desc = { .p_tx_buffer = NULL, .tx_length = 0, .p_rx_buffer = NULL, .rx_length = 0 } },
+
+    /* COINES_SPI_BUS_INT - SPIM2 INTERNAL PINS */
+    { .instance = SPIM2_INSTANCE, .peripheral_instance = NRFX_SPIM2_INSTANCE, .enabled = false,
+      .config = spi_internal_pin_config,
+      .txrx_desc = { .p_tx_buffer = NULL, .tx_length = 0, .p_rx_buffer = NULL, .rx_length = 0 } }
+};
+
+/**********************************************************************************/
+/* Functions */
+/**********************************************************************************/
 
 /*!
  * @brief   This function manages the I2C0 event call back
@@ -155,10 +173,10 @@ static void coines_i2c0_event_handler(nrfx_twim_evt_t const *p_event, void *p_co
     switch (p_event->type)
     {
         case NRFX_TWIM_EVT_DONE:
-            coines_i2c_txrx_status[COINES_I2C_BUS_0] = COINES_I2C_TX_SUCCESS;
+            coines_i2c_intf[COINES_I2C_BUS_0].txrx_status = COINES_I2C_TX_SUCCESS;
             break;
         default:
-            coines_i2c_txrx_status[COINES_I2C_BUS_0] = COINES_I2C_TX_FAILED;
+            coines_i2c_intf[COINES_I2C_BUS_0].txrx_status = COINES_I2C_TX_FAILED;
             break;
     }
 }
@@ -172,10 +190,10 @@ static void coines_i2c1_event_handler(nrfx_twim_evt_t const *p_event, void *p_co
     switch (p_event->type)
     {
         case NRFX_TWIM_EVT_DONE:
-            coines_i2c_txrx_status[COINES_I2C_BUS_1] = COINES_I2C_TX_SUCCESS;
+            coines_i2c_intf[COINES_I2C_BUS_1].txrx_status = COINES_I2C_TX_SUCCESS;
             break;
         default:
-            coines_i2c_txrx_status[COINES_I2C_BUS_1] = COINES_I2C_TX_FAILED;
+            coines_i2c_intf[COINES_I2C_BUS_1].txrx_status = COINES_I2C_TX_FAILED;
             break;
     }
 }
@@ -189,10 +207,10 @@ static void coines_i2c_int_event_handler(nrfx_twim_evt_t const *p_event, void *p
     switch (p_event->type)
     {
         case NRFX_TWIM_EVT_DONE:
-            coines_i2c_txrx_status[COINES_I2C_BUS_INT] = COINES_I2C_TX_SUCCESS;
+            coines_i2c_intf[COINES_I2C_BUS_INT].txrx_status = COINES_I2C_TX_SUCCESS;
             break;
         default:
-            coines_i2c_txrx_status[COINES_I2C_BUS_INT] = COINES_I2C_TX_FAILED;
+            coines_i2c_intf[COINES_I2C_BUS_INT].txrx_status = COINES_I2C_TX_FAILED;
             break;
     }
 }
@@ -202,7 +220,7 @@ static void coines_i2c_int_event_handler(nrfx_twim_evt_t const *p_event, void *p
  */
 bool coines_is_i2c_enabled(enum coines_i2c_bus bus)
 {
-    return is_i2c_enabled[bus] ? true : false;
+    return coines_i2c_intf[bus].enabled ? true : false;
 }
 
 /*!
@@ -218,15 +236,15 @@ static int16_t coines_i2c_bus_recover(enum coines_i2c_bus bus)
         if (coines_is_i2c_enabled(bus))
         {
             /* nRF5 SDK v16+ has nrfx_twim_bus_recover() */
-            nrfx_twim_uninit(&coines_i2c_instance[bus]);
-            is_i2c_enabled[bus] = false; /* Set I2C bus status to disabled */
+            nrfx_twim_uninit(&coines_i2c_intf[bus].peripheral_instance);
+            coines_i2c_intf[bus].enabled = false; /* Set I2C bus status to disabled */
 
             /* TODO: Re-initialize originally set I2C speed ! */
-            error = nrfx_twim_init(&coines_i2c_instance[bus],
-                                   &coines_i2c_config[bus],
-                                   coines_i2c_event_handler[bus],
+            error = nrfx_twim_init(&coines_i2c_intf[bus].peripheral_instance,
+                                   &coines_i2c_intf[bus].config,
+                                   coines_i2c_intf[bus].event_handler,
                                    NULL);
-            nrfx_twim_enable(&coines_i2c_instance[bus]);
+            nrfx_twim_enable(&coines_i2c_intf[bus].peripheral_instance);
             if (NRFX_SUCCESS != error)
             {
                 printf("I2C recovery failed\n\r");
@@ -234,7 +252,7 @@ static int16_t coines_i2c_bus_recover(enum coines_i2c_bus bus)
             }
             else
             {
-                is_i2c_enabled[bus] = true; /* Enabled I2C bus after recovery */
+                coines_i2c_intf[bus].enabled = true; /* Enabled I2C bus after recovery */
                 result = COINES_SUCCESS;
             }
         }
@@ -254,9 +272,9 @@ static int16_t coines_i2c_bus_recover(enum coines_i2c_bus bus)
 /*!
  * @brief   This function returns the SPI bus enabled status
  */
-static bool coines_is_spi_enabled(enum coines_spi_bus bus)
+bool coines_is_spi_enabled(enum coines_spi_bus bus)
 {
-    return is_spi_enabled[bus] ? true : false;
+    return coines_spi_intf[bus].enabled ? true : false;
 }
 
 /*!
@@ -265,17 +283,10 @@ static bool coines_is_spi_enabled(enum coines_spi_bus bus)
 static int16_t coines_get_i2c_instance(enum coines_i2c_bus bus)
 {
     int16_t return_val = COINES_SUCCESS;
-    int8_t instance_idx = 0;
+    int8_t instance_idx = coines_i2c_intf[bus].instance;
 
     if ((bus < COINES_I2C_BUS_MAX) && (bus >= COINES_I2C_BUS_0))
     {   
-        if(bus == COINES_I2C_BUS_INT)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_0; //TWIM0
-        }
-        else{
-            instance_idx = bus;
-        }
         return_val = coines_spi_twi_instances[instance_idx];
     }
     else
@@ -292,18 +303,10 @@ static int16_t coines_get_i2c_instance(enum coines_i2c_bus bus)
 static int16_t coines_set_i2c_instance(enum coines_i2c_bus bus, uint8_t enable)
 {
     int16_t return_val = COINES_SUCCESS;
-    int8_t instance_idx = 0;
+    int8_t instance_idx = coines_i2c_intf[bus].instance;
 
     if ((bus < COINES_I2C_BUS_MAX) && (bus >= COINES_I2C_BUS_0))
     {   
-        if(bus == COINES_I2C_BUS_INT)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_0; //TWIM0
-        }
-        else{
-            instance_idx = bus;
-        }
-
         if (COINES_ENABLE == enable)
         {
             if (0 != coines_spi_twi_instances[instance_idx])
@@ -333,22 +336,13 @@ static int16_t coines_set_i2c_instance(enum coines_i2c_bus bus, uint8_t enable)
 /*!
  * @brief   This function returns the SPI instance status
  */
-static int16_t coines_get_spi_instance(enum coines_spi_bus bus)
+int16_t coines_get_spi_instance(enum coines_spi_bus bus)
 {
     int16_t return_val = COINES_SUCCESS;
-    int8_t instance_idx = 0;
+    int8_t instance_idx = coines_spi_intf[bus].instance;
 
     if ((bus < COINES_SPI_BUS_MAX) && (bus >= COINES_SPI_BUS_0))
     {
-        if (bus == COINES_SPI_BUS_1)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_3; // SPIM3
-        }
-
-        if (bus == COINES_SPI_BUS_INT)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_3; //SPIM3
-        }
 
         return_val = coines_spi_twi_instances[instance_idx];
     }
@@ -363,23 +357,13 @@ static int16_t coines_get_spi_instance(enum coines_spi_bus bus)
 /*!
  * @brief   This function sets the SPI instance status
  */
-static int16_t coines_set_spi_instance(enum coines_spi_bus bus, uint8_t enable)
+int16_t coines_set_spi_instance(enum coines_spi_bus bus, uint8_t enable)
 {
     int16_t return_val = COINES_SUCCESS;
-    int8_t instance_idx = 0;
+    int8_t instance_idx = coines_spi_intf[bus].instance;
 
     if ((bus < COINES_SPI_BUS_MAX) && (bus >= COINES_SPI_BUS_0))
     {
-        if (bus == COINES_SPI_BUS_1)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_3; // SPIM3
-        }
-
-        if (bus == COINES_SPI_BUS_INT)
-        {
-            instance_idx = SPIM_TWIM_INSTANCE_3; //SPIM3
-        }
-
         if (COINES_ENABLE == enable)
         {
             if (0 != coines_spi_twi_instances[instance_idx])
@@ -409,7 +393,7 @@ static int16_t coines_set_spi_instance(enum coines_spi_bus bus, uint8_t enable)
 /**
  * @brief Prepares the register address in the transmit buffer based on the transfer bit size.
  */
-static uint8_t prepare_reg_addr_buffer(uint8_t *reg_addr_buffer, uint16_t reg_addr, uint8_t transfer_bits) 
+uint8_t prepare_reg_addr_buffer(uint8_t *reg_addr_buffer, uint16_t reg_addr, uint8_t transfer_bits) 
 {
     uint8_t reg_addr_buffer_len = 0;
 
@@ -444,11 +428,11 @@ int16_t coines_config_spi_bus(enum coines_spi_bus bus, enum coines_spi_speed spi
     {
         if (!coines_is_spi_enabled(bus)) /* check whether SPI bus is already enabled */
         {
-            coines_spi_config[bus].mode = (nrf_spim_mode_t)spi_mode;
+            coines_spi_intf[bus].config.mode = (nrf_spim_mode_t)spi_mode;
 
 #define COINES_NRF_SPEED_MAP(coines_spi, nrf_spi)  \
         case  COINES_SPI_SPEED_##coines_spi:         \
-            coines_spi_config[bus].frequency = NRF_SPIM_FREQ_##nrf_spi; \
+            coines_spi_intf[bus].config.frequency = NRF_SPIM_FREQ_##nrf_spi; \
             break \
 
             switch (spi_speed)
@@ -478,28 +462,28 @@ int16_t coines_config_spi_bus(enum coines_spi_bus bus, enum coines_spi_speed spi
             COINES_NRF_SPEED_MAP(10_MHZ, 8M);
 
                 default:
-                    coines_spi_config[bus].frequency = NRF_SPIM_FREQ_2M;
+                    coines_spi_intf[bus].config.frequency = NRF_SPIM_FREQ_2M;
             }
-            if (NRFX_SUCCESS == nrfx_spim_init(&coines_spi_instance[bus], &coines_spi_config[bus], NULL, NULL))
+            if (NRFX_SUCCESS == nrfx_spim_init(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].config, NULL, NULL))
             {
-                is_spi_enabled[bus] = true; /* Set SPI bus enabled */
+                coines_spi_intf[bus].enabled = true; /* Set SPI bus enabled */
 
                 /*Modifying the drive modes and pull configurations*/
-                nrf_gpio_cfg(coines_spi_config[bus].sck_pin,
+                nrf_gpio_cfg(coines_spi_intf[bus].config.sck_pin,
                              NRF_GPIO_PIN_DIR_OUTPUT,
                              NRF_GPIO_PIN_INPUT_DISCONNECT,
                              NRF_GPIO_PIN_NOPULL,
                              NRF_GPIO_PIN_H0H1,
                              NRF_GPIO_PIN_NOSENSE);
 
-                nrf_gpio_cfg(coines_spi_config[bus].mosi_pin,
+                nrf_gpio_cfg(coines_spi_intf[bus].config.mosi_pin,
                              NRF_GPIO_PIN_DIR_OUTPUT,
                              NRF_GPIO_PIN_INPUT_DISCONNECT,
                              NRF_GPIO_PIN_PULLUP,
                              NRF_GPIO_PIN_H0H1,
                              NRF_GPIO_PIN_NOSENSE);
 
-                nrf_gpio_cfg(coines_spi_config[bus].miso_pin,
+                nrf_gpio_cfg(coines_spi_intf[bus].config.miso_pin,
                              NRF_GPIO_PIN_DIR_INPUT,
                              NRF_GPIO_PIN_INPUT_CONNECT,
                              NRF_GPIO_PIN_PULLDOWN,
@@ -514,7 +498,7 @@ int16_t coines_config_spi_bus(enum coines_spi_bus bus, enum coines_spi_speed spi
             }
             else
             {
-                is_spi_enabled[bus] = false;    /* Set SPI bus status to disabled */
+                coines_spi_intf[bus].enabled = false;    /* Set SPI bus status to disabled */
                 retval = COINES_E_COMM_INIT_FAILED;
 
                 /* Set the SPI instance status to disabled */
@@ -546,8 +530,8 @@ int16_t coines_deconfig_spi_bus(enum coines_spi_bus bus)
     {   
         if (coines_is_spi_enabled(bus))
         {
-            nrfx_spim_uninit(&coines_spi_instance[bus]);
-            is_spi_enabled[bus] = false;
+            nrfx_spim_uninit(&coines_spi_intf[bus].peripheral_instance);
+            coines_spi_intf[bus].enabled = false;
 
             /* Set the SPI instance status to disabled */
             if (COINES_SUCCESS != coines_set_spi_instance(bus, COINES_DISABLE))
@@ -592,16 +576,21 @@ static void coines_get_i2c_pin_map(enum coines_i2c_bus bus, enum coines_i2c_pin_
     switch (pin_map)
     {
         case COINES_I2C_PIN_PRIMARY:
-            coines_i2c_config[bus].sda = I2C0_SEN_SDA_PIN;
-            coines_i2c_config[bus].scl = I2C0_SEN_SCL_PIN;
-            break;
-
-        case COINES_I2C_PIN_INTERNAL_TEMP:
-            coines_i2c_config[bus].sda = I2C1_INTERNAL_TEMP_SDA_PIN;
-            coines_i2c_config[bus].scl = I2C1_INTERNAL_TEMP_SCL_PIN;
+            coines_i2c_intf[bus].config.sda = I2C0_SEN_SDA_PIN;
+            coines_i2c_intf[bus].config.scl = I2C0_SEN_SCL_PIN;
             break;
 
         case COINES_I2C_PIN_SECONDARY:
+            coines_i2c_intf[bus].config.sda = I2C1_SEN_SDA_PIN;
+            coines_i2c_intf[bus].config.scl = I2C1_SEN_SCL_PIN;
+            break;
+
+        case COINES_I2C_PIN_INTERNAL:
+            coines_i2c_intf[bus].config.sda = I2C_INTERNAL_SDA_PIN;
+            coines_i2c_intf[bus].config.scl = I2C_INTERNAL_SCL_PIN;
+            break;
+
+
         case COINES_I2C_PIN_DEFAULT:
             break;
 
@@ -636,38 +625,38 @@ int16_t coines_config_i2c_bus_internal(enum coines_i2c_bus bus,
         if (!coines_is_i2c_enabled(bus)) /* Check whether I2C bus is already enabled */
         {
 
-            nrf_gpio_cfg(coines_i2c_config[bus].sda,
+            nrf_gpio_cfg(coines_i2c_intf[bus].config.sda,
                          NRF_GPIO_PIN_DIR_INPUT,
                          NRF_GPIO_PIN_INPUT_CONNECT,
                          NRF_GPIO_PIN_PULLUP,
                          NRF_GPIO_PIN_H0D1,
                          NRF_GPIO_PIN_NOSENSE);
 
-            nrf_gpio_cfg(coines_i2c_config[bus].scl,
+            nrf_gpio_cfg(coines_i2c_intf[bus].config.scl,
                          NRF_GPIO_PIN_DIR_INPUT,
                          NRF_GPIO_PIN_INPUT_CONNECT,
                          NRF_GPIO_PIN_PULLUP,
                          NRF_GPIO_PIN_H0D1,
                          NRF_GPIO_PIN_NOSENSE);
 
-            if (nrfx_twim_init(&coines_i2c_instance[bus], &coines_i2c_config[bus], coines_i2c_event_handler[bus],
+            if (nrfx_twim_init(&coines_i2c_intf[bus].peripheral_instance, &coines_i2c_intf[bus].config, coines_i2c_intf[bus].event_handler,
                                NULL) == NRFX_SUCCESS)
             {   
 
-                nrfx_twim_enable(&coines_i2c_instance[bus]);
+                nrfx_twim_enable(&coines_i2c_intf[bus].peripheral_instance);
 
                 if (i2c_mode == COINES_I2C_STANDARD_MODE)
                 {
-                    coines_i2c_config[bus].frequency = NRF_TWIM_FREQ_100K;
-                    nrf_twim_frequency_set(coines_i2c_instance[bus].p_twim, NRF_TWIM_FREQ_100K);
+                    coines_i2c_intf[bus].config.frequency = NRF_TWIM_FREQ_100K;
+                    nrf_twim_frequency_set(coines_i2c_intf[bus].peripheral_instance.p_twim, NRF_TWIM_FREQ_100K);
                 }
                 else
                 {
-                    coines_i2c_config[bus].frequency = NRF_TWIM_FREQ_400K;
-                    nrf_twim_frequency_set(coines_i2c_instance[bus].p_twim, NRF_TWIM_FREQ_400K);
+                    coines_i2c_intf[bus].config.frequency = NRF_TWIM_FREQ_400K;
+                    nrf_twim_frequency_set(coines_i2c_intf[bus].peripheral_instance.p_twim, NRF_TWIM_FREQ_400K);
                 }
 
-                is_i2c_enabled[bus] = true; /* Set I2C bus status to enabled */
+                coines_i2c_intf[bus].enabled = true; /* Set I2C bus status to enabled */
 
                 /* Set the I2C instance status to enabled */
                 if (COINES_SUCCESS != coines_set_i2c_instance(bus, COINES_ENABLE))
@@ -677,7 +666,7 @@ int16_t coines_config_i2c_bus_internal(enum coines_i2c_bus bus,
             }
             else
             {
-                is_i2c_enabled[bus] = false;    /* Set I2C bus status to disabled */
+                coines_i2c_intf[bus].enabled = false;    /* Set I2C bus status to disabled */
                 retval = COINES_E_COMM_INIT_FAILED;
 
                 /* Set the I2C instance status to disabled */
@@ -717,10 +706,10 @@ int16_t coines_deconfig_i2c_bus(enum coines_i2c_bus bus)
     {
         if (coines_is_i2c_enabled(bus)) /* Check whether I2C bus is enabled */
         {
-            nrfx_twim_disable(&coines_i2c_instance[bus]);
-            nrfx_twim_uninit(&coines_i2c_instance[bus]);
+            nrfx_twim_disable(&coines_i2c_intf[bus].peripheral_instance);
+            nrfx_twim_uninit(&coines_i2c_intf[bus].peripheral_instance);
 
-            is_i2c_enabled[bus] = false;    /*  Set I2C bus status to disabled */
+            coines_i2c_intf[bus].enabled = false;    /*  Set I2C bus status to disabled */
 
             /* Set the I2C instance status to disabled */
             if (COINES_SUCCESS != coines_set_i2c_instance(bus, COINES_DISABLE))
@@ -766,22 +755,22 @@ static int8_t i2c_write(enum coines_i2c_bus bus, uint8_t dev_addr, uint16_t reg_
 
             if (bus == COINES_I2C_BUS_1)
             {
-                while (nrfx_twim_is_busy(&coines_i2c_instance[bus]))
+                while (nrfx_twim_is_busy(&coines_i2c_intf[bus].peripheral_instance))
                     ;
             }
 
-            coines_i2c_txrx_status[bus] = COINES_I2C_TX_NONE;
-            error = nrfx_twim_xfer(&coines_i2c_instance[bus], &write_desc, NRFX_TWIM_FLAG_TX_POSTINC);
+            coines_i2c_intf[bus].txrx_status = COINES_I2C_TX_NONE;
+            error = nrfx_twim_xfer(&coines_i2c_intf[bus].peripheral_instance, &write_desc, NRFX_TWIM_FLAG_TX_POSTINC);
 
             /* Timeout the I2C operation after 1000 ms */
             volatile uint32_t t = coines_get_millis();
-            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_txrx_status[bus] == COINES_I2C_TX_NONE))
+            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_intf[bus].txrx_status == COINES_I2C_TX_NONE))
             {
                 coines_yield();
             }
 
             /* If I2C transfer has timed out, recover the I2C bus */
-            if (coines_i2c_txrx_status[bus] != COINES_I2C_TX_SUCCESS)
+            if (coines_i2c_intf[bus].txrx_status != COINES_I2C_TX_SUCCESS)
             {
                 coines_i2c_bus_recover(bus);
 
@@ -853,20 +842,20 @@ static int8_t i2c_read(enum coines_i2c_bus bus, uint8_t dev_addr, uint16_t reg_a
             reg_addr_length = prepare_reg_addr_buffer(reg_addr_buffer, reg_addr, i2c_transfer_bits);
             nrfx_twim_xfer_desc_t read_desc = NRFX_TWIM_XFER_DESC_TXRX(dev_addr, reg_addr_buffer, reg_addr_length, reg_data, count);
 
-            coines_i2c_txrx_status[bus] = COINES_I2C_TX_NONE;
-            error = nrfx_twim_xfer(&coines_i2c_instance[bus],
+            coines_i2c_intf[bus].txrx_status = COINES_I2C_TX_NONE;
+            error = nrfx_twim_xfer(&coines_i2c_intf[bus].peripheral_instance,
                                    &read_desc,
                                    NRFX_TWIM_FLAG_RX_POSTINC | NRFX_TWIM_FLAG_REPEATED_XFER);
 
             /* Timeout the I2C operation after 1000 ms */
             volatile uint32_t t = coines_get_millis();
-            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_txrx_status[bus] == COINES_I2C_TX_NONE))
+            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_intf[bus].txrx_status == COINES_I2C_TX_NONE))
             {
                 coines_yield();
             }
 
             /* If I2C transfer has timed out, recover the I2C bus */
-            if (coines_i2c_txrx_status[bus] != COINES_I2C_TX_SUCCESS)
+            if (coines_i2c_intf[bus].txrx_status != COINES_I2C_TX_SUCCESS)
             {
                 coines_i2c_bus_recover(bus);
 
@@ -933,16 +922,16 @@ int8_t coines_i2c_set(enum coines_i2c_bus bus, uint8_t dev_addr, uint8_t *data, 
             /*lint -e785*/
             nrfx_twim_xfer_desc_t write_desc = NRFX_TWIM_XFER_DESC_TX(dev_addr, data, count);
             /*lint +e785*/
-            coines_i2c_txrx_status[bus] = COINES_I2C_TX_NONE;
-            error = nrfx_twim_xfer(&coines_i2c_instance[bus], &write_desc, NRFX_TWIM_FLAG_TX_POSTINC);
+            coines_i2c_intf[bus].txrx_status = COINES_I2C_TX_NONE;
+            error = nrfx_twim_xfer(&coines_i2c_intf[bus].peripheral_instance, &write_desc, NRFX_TWIM_FLAG_TX_POSTINC);
 
             /* Timeout the I2C operation after 1000 ms */
             volatile uint32_t t = coines_get_millis();
-            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_txrx_status[bus] == COINES_I2C_TX_NONE))
+            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_intf[bus].txrx_status == COINES_I2C_TX_NONE))
                 ;
 
             /* If I2C transfer has timed out, recover the I2C bus */
-            if (coines_i2c_txrx_status[bus] != COINES_I2C_TX_SUCCESS)
+            if (coines_i2c_intf[bus].txrx_status != COINES_I2C_TX_SUCCESS)
             {
                 coines_i2c_bus_recover(bus);
             }
@@ -979,16 +968,16 @@ int8_t coines_i2c_get(enum coines_i2c_bus bus, uint8_t dev_addr, uint8_t *data, 
             nrfx_twim_xfer_desc_t read_desc = NRFX_TWIM_XFER_DESC_RX(dev_addr, data, count);
             /*lint +e785*/
 
-            coines_i2c_txrx_status[bus] = COINES_I2C_TX_NONE;
-            error = nrfx_twim_xfer(&coines_i2c_instance[bus], &read_desc, NRFX_TWIM_FLAG_RX_POSTINC);
+            coines_i2c_intf[bus].txrx_status = COINES_I2C_TX_NONE;
+            error = nrfx_twim_xfer(&coines_i2c_intf[bus].peripheral_instance, &read_desc, NRFX_TWIM_FLAG_RX_POSTINC);
 
             /* Timeout the I2C operation after 1000 ms */
             volatile uint32_t t = coines_get_millis();
-            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_txrx_status[bus] == COINES_I2C_TX_NONE))
+            while ((coines_get_millis() - t < I2C_TIMEOUT_MS) && (coines_i2c_intf[bus].txrx_status == COINES_I2C_TX_NONE))
                 ;
 
             /* If I2C transfer has timed out, recover the I2C bus */
-            if (coines_i2c_txrx_status[bus] != COINES_I2C_TX_SUCCESS)
+            if (coines_i2c_intf[bus].txrx_status != COINES_I2C_TX_SUCCESS)
             {
                 coines_i2c_bus_recover(bus);
             }
@@ -1042,21 +1031,21 @@ static int8_t spi_write(enum coines_spi_bus bus, uint8_t cs_pin, uint16_t reg_ad
             reg_addr_length = prepare_reg_addr_buffer(reg_addr_buffer, reg_addr, spi_transfer_bits);
 
             /*lint -e789 */
-            coines_spi_txrx_desc[bus].p_tx_buffer = reg_addr_buffer;
-            coines_spi_txrx_desc[bus].tx_length = reg_addr_length;
-            coines_spi_txrx_desc[bus].p_rx_buffer = NULL;
-            coines_spi_txrx_desc[bus].rx_length = 0;
+            coines_spi_intf[bus].txrx_desc.p_tx_buffer = reg_addr_buffer;
+            coines_spi_intf[bus].txrx_desc.tx_length = reg_addr_length;
+            coines_spi_intf[bus].txrx_desc.p_rx_buffer = NULL;
+            coines_spi_intf[bus].txrx_desc.rx_length = 0;
 
-            error = nrfx_spim_xfer(&coines_spi_instance[bus], &coines_spi_txrx_desc[bus], 0);
+            error = nrfx_spim_xfer(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].txrx_desc, 0);
 
             if (error == NRFX_SUCCESS)
             {
-                coines_spi_txrx_desc[bus].p_tx_buffer = reg_data;
-                coines_spi_txrx_desc[bus].tx_length = count;
-                coines_spi_txrx_desc[bus].p_rx_buffer = NULL;
-                coines_spi_txrx_desc[bus].rx_length = 0;
+                coines_spi_intf[bus].txrx_desc.p_tx_buffer = reg_data;
+                coines_spi_intf[bus].txrx_desc.tx_length = count;
+                coines_spi_intf[bus].txrx_desc.p_rx_buffer = NULL;
+                coines_spi_intf[bus].txrx_desc.rx_length = 0;
 
-                error = nrfx_spim_xfer(&coines_spi_instance[bus], &coines_spi_txrx_desc[bus], 0);
+                error = nrfx_spim_xfer(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].txrx_desc, 0);
 
                 if (error == NRFX_ERROR_INVALID_ADDR)
                 {
@@ -1066,9 +1055,9 @@ static int8_t spi_write(enum coines_spi_bus bus, uint8_t cs_pin, uint16_t reg_ad
                     */
                     uint8_t temp_buff[count];
                     memcpy(temp_buff, reg_data, count);
-                    coines_spi_txrx_desc[bus].p_tx_buffer = temp_buff;
+                    coines_spi_intf[bus].txrx_desc.p_tx_buffer = temp_buff;
 
-                    error = nrfx_spim_xfer(&coines_spi_instance[bus], &coines_spi_txrx_desc[bus], 0);
+                    error = nrfx_spim_xfer(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].txrx_desc, 0);
                 }
             }
 
@@ -1151,21 +1140,21 @@ static int8_t spi_read(enum coines_spi_bus bus, uint8_t cs_pin, uint16_t reg_add
 
             reg_addr_length = prepare_reg_addr_buffer(reg_addr_buffer, reg_addr, spi_transfer_bits);
 
-            coines_spi_txrx_desc[bus].p_tx_buffer = reg_addr_buffer;
-            coines_spi_txrx_desc[bus].tx_length = reg_addr_length;
-            coines_spi_txrx_desc[bus].p_rx_buffer = NULL;
-            coines_spi_txrx_desc[bus].rx_length = 0;
+            coines_spi_intf[bus].txrx_desc.p_tx_buffer = reg_addr_buffer;
+            coines_spi_intf[bus].txrx_desc.tx_length = reg_addr_length;
+            coines_spi_intf[bus].txrx_desc.p_rx_buffer = NULL;
+            coines_spi_intf[bus].txrx_desc.rx_length = 0;
 
-            error = nrfx_spim_xfer(&coines_spi_instance[bus], &coines_spi_txrx_desc[bus], 0);
+            error = nrfx_spim_xfer(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].txrx_desc, 0);
 
             if (error == NRFX_SUCCESS)
             {
-                coines_spi_txrx_desc[bus].p_tx_buffer = NULL;
-                coines_spi_txrx_desc[bus].tx_length = 0;
-                coines_spi_txrx_desc[bus].p_rx_buffer = reg_data;
-                coines_spi_txrx_desc[bus].rx_length = count;
+                coines_spi_intf[bus].txrx_desc.p_tx_buffer = NULL;
+                coines_spi_intf[bus].txrx_desc.tx_length = 0;
+                coines_spi_intf[bus].txrx_desc.p_rx_buffer = reg_data;
+                coines_spi_intf[bus].txrx_desc.rx_length = count;
 
-                error = nrfx_spim_xfer(&coines_spi_instance[bus], &coines_spi_txrx_desc[bus], 0);
+                error = nrfx_spim_xfer(&coines_spi_intf[bus].peripheral_instance, &coines_spi_intf[bus].txrx_desc, 0);
             }
 
             /* Deactivate CS pin */

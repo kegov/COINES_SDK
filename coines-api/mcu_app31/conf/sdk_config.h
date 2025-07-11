@@ -73,7 +73,7 @@
 // <7=> 7 
 
 #ifndef GPIOTE_CONFIG_IRQ_PRIORITY
-#define GPIOTE_CONFIG_IRQ_PRIORITY 6
+#define GPIOTE_CONFIG_IRQ_PRIORITY 2
 #endif
 
 // </e>

@@ -1,7 +1,7 @@
 # COINES Bridge version info
 COINES_BRIDGE_VERSION_MAJOR = 1
 COINES_BRIDGE_VERSION_MINOR = 8
-COINES_BRIDGE_VERSION_PATCH = 3
+COINES_BRIDGE_VERSION_PATCH = 4
 
 # Root of COINES_SDK installation folder
 # Can be C:/COINES/v2.0 , $(HOME)/COINES/v2.0 ,etc.,
@@ -19,7 +19,7 @@ C_SRCS += decoder/decoder.c
 C_SRCS += decoder/decoder_support.c
 C_SRCS += stream/stream.c
 C_SRCS += $(COINES_INSTALL_PATH)/libraries/job_queue/job_queue.c
-C_SRCS += $(COINES_INSTALL_PATH)/libraries/mbuf/mbuf.c
+C_SRCS += $(COINES_INSTALL_PATH)/libraries/circular_buffer_mcu/circular_buffer_mcu.c
 
 
 # Additional C++ files
@@ -37,7 +37,8 @@ INCLUDEPATHS += decoder
 INCLUDEPATHS += stream 
 INCLUDEPATHS += $(COINES_INSTALL_PATH)/libraries/nrf52_eeprom 
 INCLUDEPATHS += $(COINES_INSTALL_PATH)/libraries/job_queue
-INCLUDEPATHS += $(COINES_INSTALL_PATH)/libraries/mbuf
+INCLUDEPATHS += $(COINES_INSTALL_PATH)/libraries/circular_buffer_mcu
+INCLUDEPATHS += $(COINES_INSTALL_PATH)/examples/c/common/coines_bridge_firmware
 
 # Non stream request response buffer size
 DEFAULT_BUFF_SIZE ?= 2048
@@ -51,6 +52,8 @@ CFLAGS += -DCOM_STREAM_BUFF_SIZE=$(STREAM_BUFF_SIZE)
 CFLAGS += -DSOFTWARE_VERSION_MAJOR=$(COINES_BRIDGE_VERSION_MAJOR) 
 CFLAGS += -DSOFTWARE_VERSION_MINOR=$(COINES_BRIDGE_VERSION_MINOR) 
 CFLAGS += -DSOFTWARE_VERSION_PATCH=$(COINES_BRIDGE_VERSION_PATCH)
+# CFLAGS += -DDEBUG
+# CFLAGS += -DSEGGER_PRINTF_ENABLE
 
 # Additional C++ compiler flags
 # Eg: CPPFLAGS += -std=c++11 

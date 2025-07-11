@@ -106,10 +106,12 @@ const nrfx_spim_t flash_spi_instance = NRFX_SPIM_INSTANCE(2);
 nrfx_spim_config_t flash_spi_config = NRFX_SPIM_DEFAULT_CONFIG;
 static nrfx_spim_xfer_desc_t flash_spi_xfer;
 static uint8_t flash_spi_tx_buff[SPI_TX_SIZE];
+volatile bool spi_xfer_done = false;
 
 /**********************************************************************************/
 /* function prototypes */
 /**********************************************************************************/
+void spi_event_handler(nrfx_spim_evt_t const * p_event, void *p_context);
 void w25_gpio_pin_output_set(uint8_t pin);
 uint8_t w25_spi_init(void);
 static void w25_device_reset(void);
@@ -117,6 +119,24 @@ static uint8_t w25_read_reg(w25_reg_t reg);
 uint8_t w25_spi_rx_tx(uint8_t spi_entity, uint8_t address, uint8_t* tx_buffer,
                       uint16_t tx_count,
                       uint8_t* rx_buffer, uint16_t rx_count);
+
+/**
+ * @brief SPI user event handler.
+ * @param event
+ */
+void spi_event_handler(nrfx_spim_evt_t const * p_event, void *p_context)
+{
+    (void)p_context;
+    switch (p_event->type)
+    {
+        case NRFX_SPIM_EVENT_DONE: 
+            spi_xfer_done = true;
+            break;
+        default:
+            spi_xfer_done = false;
+            break;
+    }
+}
 
 /*!
  * @brief This function initializes the w25 driver
@@ -261,8 +281,8 @@ uint8_t w25_spi_init()
     flash_spi_config.sck_pin = SPI_CLK_PIN_FLASH;
     flash_spi_config.ss_pin = SPI_CS_PIN_FLASH;
     flash_spi_config.frequency = NRF_SPIM_FREQ_8M;
-
-    if (nrfx_spim_init(&flash_spi_instance, &flash_spi_config, NULL, NULL) != NRFX_SUCCESS)
+    
+    if (nrfx_spim_init(&flash_spi_instance, &flash_spi_config, spi_event_handler, NULL) != NRFX_SUCCESS)
     {
         return 0;
     }
@@ -307,10 +327,14 @@ uint8_t w25_spi_rx_tx(uint8_t spi_entity, uint8_t address, uint8_t* tx_buffer, u
     flash_spi_xfer.p_rx_buffer = rx_buffer;
     flash_spi_xfer.rx_length = rx_count;
 
-    if (nrfx_spim_xfer(&flash_spi_instance, &flash_spi_xfer, 0) != NRFX_SUCCESS)
+    spi_xfer_done = false;
+    nrfx_spim_xfer(&flash_spi_instance, &flash_spi_xfer, NRFX_SPIM_FLAG_TX_POSTINC|NRFX_SPIM_FLAG_RX_POSTINC);
+    
+    while (!spi_xfer_done)
     {
-        return 1;
+        coines_yield();
     }
+   
 
     return 0;
 }

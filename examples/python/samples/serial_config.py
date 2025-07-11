@@ -73,10 +73,9 @@ if __name__ == "__main__":
     else:
         # Get and print board info
         board_info = board.get_board_info()
-        print(f"COINES SDK version: {board.lib_version}")
-        print(
-            f"BoardInfo: HW/SW ID: {hex(board_info.HardwareId)}/{hex(board_info.SoftwareId)}"
-        )
+        print('BoardInfo')
+        print(f'Software ID: v{(board_info.SoftwareId >> 12) & 0xF}.{(board_info.SoftwareId >> 6) & 0x3F}.{board_info.SoftwareId & 0x3F}')
+        print(f'Type of Board: {hex(board_info.Board)}')
         board.soft_reset()
 
         # Close communication

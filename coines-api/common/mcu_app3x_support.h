@@ -194,17 +194,29 @@
 #define TIMER_TICKS_TO_NSEC(t)   (((uint64_t)t * UINT64_C(1000)) / TIMER_TICKS_PER_SECOND)
 
 /**********************************************************************************/
-/* data structure declarations  */
+/* typedef */
 /**********************************************************************************/
+
+typedef void (*coines_i2c_callback)(nrfx_twim_evt_t const *, void *);
+
 typedef void (*ISR_CB)(uint32_t pin, uint32_t polarity);
 
 typedef void (*timed_interrupt_cb)(uint64_t timestamp, uint32_t multiio_pin, uint32_t multiio_pin_polarity);
+
+/**********************************************************************************/
+/* data structure declarations  */
+/**********************************************************************************/
+
 struct coines_timed_interrupt_config
 {
     uint8_t timer_cc_channel;
     nrf_ppi_channel_t ppi_channel;
     timed_interrupt_cb cb;
 };
+
+/**********************************************************************************/
+/* functions */
+/**********************************************************************************/
 
 /**@brief Function for converting battery voltage to percentage.
  *

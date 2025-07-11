@@ -37,8 +37,9 @@
 
 /*! Macros to hold the BLE peripheral name and address to be connected */
 /*! Please change the name and address with BLE name of the App board under test */
-#define BLE_NAME  "APP Board 3.0(B6-E5)"
-#define BLE_ADDR  "dd:fc:ab:af:b6:e5"
+#define BLE_NAME        "APP Board 3.1 (E3-0E)"
+#define BLE_ADDR        "f0:7b:f9:0b:e3:0e"
+#define SCAN_TIMEOUT    7000
 
 /*! Variable to hold the communication interface type */
 const enum coines_comm_intf comm_intf = COINES_COMM_INTF_BLE;
@@ -66,7 +67,12 @@ void check_com_result(char *func_name, int16_t err_code)
 int16_t coines_board_init()
 {
     struct coines_board_info board_info;
-    struct ble_peripheral_info ble_config = { BLE_ADDR, "" };
+    struct ble_peripheral_info ble_config = {
+        .ble_address = BLE_ADDR,
+        .ble_identifier = BLE_NAME,
+        .scan_timeout = SCAN_TIMEOUT,
+        .rx_buffer_size = 2048
+    };
 
     int16_t result = coines_open_comm_intf(comm_intf, &ble_config);
 
@@ -77,9 +83,8 @@ int16_t coines_board_init()
     {
         printf("\nBoard Info:");
         printf("\n\tboard_info.board:0x%02X", board_info.board);
-        printf("\n\tboard_info.hardware_id:0x%02X", board_info.hardware_id);
         printf("\n\tboard_info.shuttle_id:0x%02X", board_info.shuttle_id);
-        printf("\n\tboard_info.software_id:0x%02X", board_info.software_id);
+        printf("\n\tboard_info.software_id:v%d.%d.%d\n",  (board_info.software_id >> 12) & 0xF, (board_info.software_id >> 6) & 0x3F, board_info.software_id & 0x3F);
     }
 
     coines_delay_msec(100);

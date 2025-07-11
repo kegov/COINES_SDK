@@ -39,6 +39,9 @@
 #include <stdint.h>
 #include "bridge.h"
 #include "coines.h"
+#ifdef LOGGING_ENABLED
+#include "logger.h"
+#endif
 
 /**********************************************************************************/
 /* header includes */

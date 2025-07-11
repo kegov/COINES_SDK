@@ -140,6 +140,12 @@ int8_t mqueue_wait_for_samples(uint8_t queue_id, uint16_t num_samples, uint32_t 
  */
 void mqueue_deinit(void);
 
+/**
+ * @brief Resets all queues except the non-streaming response queue.
+ *
+ */
+void mqueue_reset_queue(void);
+
 /* C++ Guard macro - To prevent name mangling by C++ compiler */
 #ifdef __cplusplus
 }

@@ -49,10 +49,16 @@
 #include "streaming.h"
 #include "mqueue.h"
 #include "circular_buffer.h"
+#include "protocol.h"
 
 /*********************************************************************/
 /* local macro definitions */
 /*********************************************************************/
+/*! Overhead for stream response
+* The header length is omitted since it gets removed when stream reponse data is added to the Mqueue.
+*/
+#define INTERRUPT_RSP_OVERHEAD     UINT16_C(PROTO_PACKET_COUNT_LEN + PROTO_TIMESTAMP_LEN)
+#define POLLING_RSP_OVERHEAD       UINT16_C(0)
 
 /*********************************************************************/
 /* constant definitions */
@@ -61,6 +67,8 @@
 /*********************************************************************/
 /* global variables */
 /*********************************************************************/
+/* Flag to indicate if stop streaming is triggered */
+bool stop_stream_triggered = false; 
 
 /*********************************************************************/
 /* static variables */
@@ -80,7 +88,7 @@ circular_buffer_t stream_cbuf;
 static uint8_t coines_sensor_id_count = 0;
 
 /*! Index for writing data into the payload buffer */
-static uint8_t write_index = 0;
+static uint16_t write_index = 0;
 
 /*! Length of the response data */
 static uint16_t resp_length;
@@ -99,11 +107,13 @@ static struct coines_streaming_settings coines_streaming_cfg_buf[COINES_MAX_SENS
 
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static bool streaming_init_success = false;
+static enum coines_streaming_mode streaming_mode;
 
 /*********************************************************************/
 /* static functions */
 /*********************************************************************/
 static void common_stream_config(uint8_t sensor_id);
+static int16_t common_stream_data_config(uint8_t sensor_id);
 static int16_t interrupt_stream_config(uint8_t sensor_id);
 static int16_t poll_stream_config(uint8_t sensor_id);
 static int16_t dma_stream_config(uint8_t sensor_id);
@@ -111,8 +121,51 @@ static int16_t init_data_pipeline(uint8_t start_stop);
 static int16_t deinit_data_pipeline(uint8_t start_stop);
 
 /*********************************************************************/
+/* static functions declaration */
+/*********************************************************************/
+static int16_t validate_data_blocks(uint8_t sensor_id);
+
+/*********************************************************************/
 /* functions */
 /*********************************************************************/
+
+/*!
+ * @brief Validate the data blocks for streaming configuration.
+ *
+ */
+static int16_t validate_data_blocks(uint8_t sensor_id)
+{
+    struct coines_streaming_settings *stream_p = &coines_streaming_cfg_buf[sensor_id];
+    
+    if (stream_p->data_blocks.no_of_blocks == 0 ||
+            stream_p->data_blocks.no_of_blocks > COINES_MAX_BLOCKS)
+    {
+        return COINES_E_STREAM_INVALID_BLOCK_SIZE;
+    }
+
+    for (uint16_t i = 0; i < stream_p->data_blocks.no_of_blocks; i++)
+    {
+        if (stream_p->data_blocks.reg_start_addr[i] == 0 &&
+            stream_p->data_blocks.no_of_data_bytes[i] == 0)
+        {
+            return COINES_E_STREAM_UNCONFIGURED_BLOCK;
+        }
+        if (stream_p->data_blocks.no_of_data_bytes[i] == 0)
+        {
+            return COINES_E_STREAM_INVALID_PAYLOAD_LEN;
+        }
+
+        if (stream_p->data_blocks.enable_rw_blocks == COINES_ENABLE_RW_BLOCKS_MAGIC_NUMBER)
+        {
+            if (stream_p->data_blocks.block_type[i] != COINES_READ_BLOCK &&
+                stream_p->data_blocks.block_type[i] != COINES_WRITE_BLOCK)
+            {
+                return COINES_E_STREAM_INVALID_BLOCK_TYPE;
+            }
+        }
+    }
+    return COINES_SUCCESS;
+}
 
 /*!
  * @brief This API is used to configure streaming settings.
@@ -134,10 +187,22 @@ int16_t coines_config_streaming(uint8_t sensor_id,
 
             stream_p->sensor_id = sensor_id;
             memcpy(&stream_p->stream_config, stream_config, sizeof(struct coines_streaming_config));
-            memcpy(&stream_p->data_blocks, data_blocks, sizeof(struct coines_streaming_blocks));
-            if (stream_p->data_blocks.no_of_blocks == 0 || stream_p->data_blocks.no_of_blocks > COINES_MAX_BLOCKS)
+
+            if (data_blocks->enable_rw_blocks == COINES_ENABLE_RW_BLOCKS_MAGIC_NUMBER)
             {
-                return COINES_E_STREAM_INVALID_BLOCK_SIZE;
+                memcpy(&stream_p->data_blocks, data_blocks, sizeof(struct coines_streaming_blocks));
+            }
+            else
+            {
+                stream_p->data_blocks.no_of_blocks = data_blocks->no_of_blocks;
+
+                memcpy(stream_p->data_blocks.reg_start_addr,
+                    data_blocks->reg_start_addr,
+                    sizeof(data_blocks->reg_start_addr));
+
+                memcpy(stream_p->data_blocks.no_of_data_bytes,
+                    data_blocks->no_of_data_bytes,
+                    sizeof(data_blocks->no_of_data_bytes));
             }
 
             coines_sensor_id_count++;
@@ -162,9 +227,9 @@ int16_t coines_config_streaming(uint8_t sensor_id,
 static int16_t config_poll_stream_timing()
 {
     int16_t ret;
-    double sampling_time[2] = { 0, 0 };
+    double data_sampling_time[2] = { 0, 0 };
     double remaining = 0;
-    uint8_t sampling_unit[2];
+    uint8_t data_sampling_unit[2];
     uint16_t gcd_sampling_time;
     enum coines_sampling_unit gcd_sampling_unit;
     uint32_t i;
@@ -176,31 +241,31 @@ static int16_t config_poll_stream_timing()
     {
         for (i = 0; i < coines_sensor_id_count; i++)
         {
-            sampling_time[i] = (double)coines_streaming_cfg_buf[i].stream_config.sampling_time;
-            sampling_unit[i] = coines_streaming_cfg_buf[i].stream_config.sampling_units;
-            sampling_time[i] =
-                (sampling_unit[i] ==
-                 COINES_SAMPLING_TIME_IN_MICRO_SEC) ? (sampling_time[i] / 1000.00) : sampling_time[i];
+            data_sampling_time[i] = (double)coines_streaming_cfg_buf[i].stream_config.sampling_time;
+            data_sampling_unit[i] = coines_streaming_cfg_buf[i].stream_config.sampling_units;
+            data_sampling_time[i] =
+                (data_sampling_unit[i] ==
+                 COINES_SAMPLING_TIME_IN_MICRO_SEC) ? (data_sampling_time[i] / 1000.00) : data_sampling_time[i];
         }
 
         /* Calculate GCD */
-        while (sampling_time[1] != 0)
+        while (data_sampling_time[1] != 0)
         {
-            remaining = (double)fmod(sampling_time[0], sampling_time[1]);
-            sampling_time[0] = sampling_time[1];
-            sampling_time[1] = remaining;
+            remaining = (double)fmod(data_sampling_time[0], data_sampling_time[1]);
+            data_sampling_time[0] = data_sampling_time[1];
+            data_sampling_time[1] = remaining;
         }
 
         /* If decimal point is present, convert to microsecond */
-        if ((sampling_time[0] - (int32_t)sampling_time[0]) != 0)
+        if ((data_sampling_time[0] - (int32_t)data_sampling_time[0]) != 0)
         {
             /* Need to convert to microsecond */
-            gcd_sampling_time = (uint16_t)(sampling_time[0] * 1000);
+            gcd_sampling_time = (uint16_t)(data_sampling_time[0] * 1000);
             gcd_sampling_unit = COINES_SAMPLING_TIME_IN_MICRO_SEC;
         }
         else
         {
-            gcd_sampling_time = (uint16_t)sampling_time[0];
+            gcd_sampling_time = (uint16_t)data_sampling_time[0];
             gcd_sampling_unit = COINES_SAMPLING_TIME_IN_MILLI_SEC;
         }
     }
@@ -258,6 +323,15 @@ static int16_t stream_mode_init(enum coines_streaming_mode stream_mode, uint8_t*
         case COINES_STREAMING_MODE_INTERRUPT:
             *command = COINES_CMD_ID_INT_STREAM_CONFIG;
             break;
+
+        case COINES_STREAMING_MODE_BLOCK_IO_POLLING:
+            *command = COINES_CMD_ID_BLOCK_IO_POLL_STREAM_CONFIG;
+            ret = config_poll_stream_timing();
+            break;
+
+        case COINES_STREAMING_MODE_BLOCK_IO_INTERRUPT:
+            *command = COINES_CMD_ID_BLOCK_IO_INT_STREAM_CONFIG;
+            break;
     }
 
     return ret;
@@ -271,6 +345,8 @@ static int16_t configure_stream_mode(enum coines_streaming_mode stream_mode)
 {
     int16_t ret;
     uint8_t command = 0;
+
+    streaming_mode = stream_mode;
 
     ret = stream_mode_init(stream_mode, &command);
     if (ret != COINES_SUCCESS)
@@ -291,10 +367,12 @@ static int16_t configure_stream_mode(enum coines_streaming_mode stream_mode)
                 break;
 
             case COINES_STREAMING_MODE_POLLING:
+            case COINES_STREAMING_MODE_BLOCK_IO_POLLING:
                 ret = poll_stream_config(sensor_id);
                 break;
 
             case COINES_STREAMING_MODE_INTERRUPT:
+            case COINES_STREAMING_MODE_BLOCK_IO_INTERRUPT:
                 ret = interrupt_stream_config(sensor_id);
                 break;
         }
@@ -345,6 +423,94 @@ static void common_stream_config(uint8_t sensor_id)
         payload[write_index++] = (uint8_t)coines_streaming_cfg_buf[sensor_id].stream_config.spi_bus;
         payload[write_index++] = (uint8_t)coines_streaming_cfg_buf[sensor_id].stream_config.cs_pin;
     }
+}
+
+/*!
+ * @brief This API is used to configure common data block settings for streaming
+ */
+static int16_t common_stream_data_config(uint8_t sensor_id)
+{
+    int16_t ret = COINES_SUCCESS;
+    uint16_t total_block_read_len = 0;
+
+    /* Data blocks will not be configured for DMA streaming */
+    if(streaming_mode != COINES_STREAMING_MODE_DMA_INTERRUPT)
+    {
+        ret = validate_data_blocks(sensor_id);
+    }
+    if (ret != COINES_SUCCESS)
+    {
+        return ret;
+    }
+
+    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks >> 8;
+    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks & 0xFF;
+
+    if(streaming_mode == COINES_STREAMING_MODE_BLOCK_IO_POLLING ||
+       streaming_mode == COINES_STREAMING_MODE_POLLING)
+    {
+        total_block_read_len = POLLING_RSP_OVERHEAD;
+    }
+    else if(streaming_mode == COINES_STREAMING_MODE_BLOCK_IO_INTERRUPT ||
+            streaming_mode == COINES_STREAMING_MODE_INTERRUPT ||
+            streaming_mode == COINES_STREAMING_MODE_DMA_INTERRUPT)
+    {
+        total_block_read_len = INTERRUPT_RSP_OVERHEAD;
+    }
+
+    bool is_rw_blocks = (coines_streaming_cfg_buf[sensor_id].data_blocks.enable_rw_blocks == COINES_ENABLE_RW_BLOCKS_MAGIC_NUMBER);
+
+    for (uint16_t j = 0; j < coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks; j++)
+    {
+        if (is_rw_blocks)
+        {
+            if(coines_streaming_cfg_buf[sensor_id].data_blocks.block_type[j] == COINES_READ_BLOCK)
+            {  
+                total_block_read_len += coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j];
+            }
+            else if(coines_streaming_cfg_buf[sensor_id].data_blocks.block_type[j] == COINES_WRITE_BLOCK)
+            {
+                total_block_read_len += PROTO_STREAM_WRITE_BLOCK_RESP_LEN;
+            }
+            else
+            {
+                return COINES_E_STREAM_INVALID_BLOCK_TYPE;
+            }
+        }
+        else
+        {
+            total_block_read_len += coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j];
+        }
+    
+        // Check if the total block read length exceeds the maximum allowed size
+        if (total_block_read_len >= MQUEUE_PACKET_SIZE)
+        {
+            return COINES_E_STREAM_INVALID_PAYLOAD_LEN;
+        }
+
+        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.reg_start_addr[j];
+        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] >> 8;
+        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] & 0xFF;
+
+        if (streaming_mode == COINES_STREAMING_MODE_BLOCK_IO_POLLING ||
+            streaming_mode == COINES_STREAMING_MODE_BLOCK_IO_INTERRUPT)
+        {
+            payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.block_type[j];
+            payload[write_index++] = (coines_streaming_cfg_buf[sensor_id].data_blocks.wait_time_us[j] >> 24) & 0xFF;
+            payload[write_index++] = (coines_streaming_cfg_buf[sensor_id].data_blocks.wait_time_us[j] >> 16) & 0xFF;
+            payload[write_index++] = (coines_streaming_cfg_buf[sensor_id].data_blocks.wait_time_us[j] >> 8) & 0xFF;
+            payload[write_index++] = (coines_streaming_cfg_buf[sensor_id].data_blocks.wait_time_us[j] >> 0) & 0xFF;
+            if (coines_streaming_cfg_buf[sensor_id].data_blocks.block_type[j] == COINES_WRITE_BLOCK)
+            {
+                for (uint16_t k = 0; k < coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j]; k++)
+                {
+                    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.write_data[j][k];
+                }
+            }
+        }
+    }
+
+    return ret;
 }
 
 /*!
@@ -409,6 +575,8 @@ static int16_t dma_stream_config(uint8_t sensor_id)
  */
 static int16_t poll_stream_config(uint8_t sensor_id)
 {
+    int16_t ret;
+
     /* Common stream configuration */
     common_stream_config(sensor_id);
 
@@ -416,18 +584,10 @@ static int16_t poll_stream_config(uint8_t sensor_id)
     payload[write_index++] = coines_streaming_cfg_buf[sensor_id].stream_config.sampling_time & 0xFF;
     payload[write_index++] = coines_streaming_cfg_buf[sensor_id].stream_config.sampling_units;
 
-    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks >> 8;
-    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks & 0xFF;
-
-    for (uint16_t j = 0; j < coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks; j++)
+    ret = common_stream_data_config(sensor_id);
+    if (ret != COINES_SUCCESS)
     {
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.reg_start_addr[j];
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] >> 8;
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] & 0xFF;
-        if (coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] > MQUEUE_PACKET_SIZE)
-        {
-            return COINES_E_INVALID_PAYLOAD_LEN;
-        }
+        return ret;
     }
 
     payload[write_index++] = coines_streaming_cfg_buf[sensor_id].stream_config.spi_type;
@@ -444,7 +604,8 @@ static int16_t poll_stream_config(uint8_t sensor_id)
     {
         config_intline_info(sensor_id);
     }
-    return COINES_SUCCESS;
+
+    return ret;
 }
 
 /*!
@@ -453,23 +614,17 @@ static int16_t poll_stream_config(uint8_t sensor_id)
  */
 static int16_t interrupt_stream_config(uint8_t sensor_id)
 {
+    int16_t ret;
+
     /* Common stream configuration */
     common_stream_config(sensor_id);
 
     payload[write_index++] = coines_streaming_cfg_buf[sensor_id].stream_config.int_pin;
 
-    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks >> 8;
-    payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks & 0xFF;
-
-    for (uint16_t j = 0; j < coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_blocks; j++)
+    ret = common_stream_data_config(sensor_id);
+    if (ret != COINES_SUCCESS)
     {
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.reg_start_addr[j];
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] >> 8;
-        payload[write_index++] = coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] & 0xFF;
-        if (coines_streaming_cfg_buf[sensor_id].data_blocks.no_of_data_bytes[j] > MQUEUE_PACKET_SIZE)
-        {
-            return COINES_E_INVALID_PAYLOAD_LEN;
-        }
+        return ret;
     }
 
     payload[write_index++] = coines_streaming_cfg_buf[sensor_id].stream_config.spi_type;
@@ -487,7 +642,8 @@ static int16_t interrupt_stream_config(uint8_t sensor_id)
     {
         config_intline_info(sensor_id);
     }
-    return COINES_SUCCESS; 
+
+    return ret;
 }
 
 /*!
@@ -547,7 +703,7 @@ static int16_t deinit_data_pipeline(uint8_t start_stop)
 
     circular_buffer_free(&stream_cbuf);
     mqueue_deinit();
-    coines_flush_intf(interface_type);
+    // coines_flush_intf(interface_type);
 
     return ret;
 }
@@ -559,6 +715,8 @@ static int16_t deinit_data_pipeline(uint8_t start_stop)
 int16_t coines_start_stop_streaming(enum coines_streaming_mode stream_mode, uint8_t start_stop)
 {
     int16_t ret = COINES_SUCCESS;
+    uint32_t start_time;
+    uint32_t current_time;
 
     streaming_init_success = false;
 
@@ -579,13 +737,13 @@ int16_t coines_start_stop_streaming(enum coines_streaming_mode stream_mode, uint
     {
         /* coines_sensor_info.no_of_sensors_enabled = coines_sensor_id_count; */
 
-        ret = configure_stream_mode(stream_mode) ;
+        ret = init_data_pipeline(start_stop);
         if (ret != COINES_SUCCESS)
         {
             return ret;
         }
 
-        ret = init_data_pipeline(start_stop);
+        ret = configure_stream_mode(stream_mode);
         if (ret != COINES_SUCCESS)
         {
             return ret;
@@ -614,39 +772,59 @@ int16_t coines_start_stop_streaming(enum coines_streaming_mode stream_mode, uint
 
         if (ret == COINES_SUCCESS)
         {
-            /* Ignoring the start stream response may sometimes fail at higher ODRs. If the start stream fails, 
-            it will be captured as a READ_TIMEOUT error while reading the stream sensor data.*/
-            // ret = protocol_decode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, resp_buffer, &resp_length);
-            ret = COINES_SUCCESS;
-            streaming_init_success = true;
+            start_time = coines_get_millis();
+            do
+            {
+                ret =
+                    protocol_decode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, resp_buffer, &resp_length);
+                current_time = coines_get_millis();
+                if ((ret == COINES_E_READ_TIMEOUT) || ((current_time - start_time) > READ_TIMEOUT_MS))
+                {
+                    return COINES_E_READ_TIMEOUT;
+                }
+            } while (ret != COINES_SUCCESS);
+            if (ret == COINES_SUCCESS)
+            {
+                streaming_init_success = true;
+            }
+        }
+        else
+        {
+            return get_coines_error_mapping(ret);
         }
     }
     else
     {
-        ret = deinit_data_pipeline(start_stop);
-        if (ret != COINES_SUCCESS)
-        {
-            return ret;
-        }
-        coines_delay_msec(100);
-        memset(&payload[0], 0x0, sizeof(payload));
-        ret = protocol_encode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, &payload[0], 1);
+        /* To notify decoding thread to clear the streamed queue data */
+        stop_stream_triggered = true;
 
+        memset(&payload[0], 0x0, sizeof(payload));
+        ret = protocol_encode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, &payload[0], 1); 
         if (ret == COINES_SUCCESS)
         {
-            do 
+            start_time = coines_get_millis();
+            do
             {
-                ret = protocol_decode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, resp_buffer, &resp_length);
-                if(ret == COINES_E_READ_TIMEOUT){
-                    break;
+                ret =
+                    protocol_decode_packet(interface_type, COINES_CMD_ID_STREAM_START_STOP, resp_buffer, &resp_length);
+                current_time = coines_get_millis();
+                if ((ret == COINES_E_READ_TIMEOUT) || ((current_time - start_time) > READ_TIMEOUT_MS))
+                {
+                    return COINES_E_READ_TIMEOUT;
                 }
-            }while(ret != COINES_SUCCESS);
-            
+            } while (ret != COINES_SUCCESS);
+
             streaming_init_success = false;
         }
         else
         {
             return get_coines_error_mapping(ret);
+        }
+
+        ret = deinit_data_pipeline(start_stop);
+        if (ret != COINES_SUCCESS)
+        {
+            return ret;
         }
 
 
@@ -657,6 +835,7 @@ int16_t coines_start_stop_streaming(enum coines_streaming_mode stream_mode, uint
         }
 
         coines_sensor_id_count = 0;
+        stop_stream_triggered = false;
     }
 
     return get_coines_error_mapping(ret);
@@ -676,7 +855,7 @@ int16_t coines_read_stream_sensor_data(uint8_t sensor_id,
     uint32_t current_time;
     struct coines_board_info board_info;
     uint32_t timeout = 0;
-    
+
     start_time = coines_get_millis();
 
     if (data == NULL || valid_samples_count == NULL)
@@ -693,18 +872,18 @@ int16_t coines_read_stream_sensor_data(uint8_t sensor_id,
     {
         return COINES_E_STREAMING_INIT_FAILURE;
     }
-    
+
     do
     {
         pthread_mutex_lock(&mutex);
         current_time = coines_get_millis();
-        
+
         ret = mqueue_read_stream_data(sensor_id, data, number_of_samples, valid_samples_count);
 
-        // Check cflag to determine the configured packet size. If it exceeds 255, assume fifo streaming.
+        /* Check cflag to determine the configured packet size. If it exceeds 255, assume fifo streaming. */
         if (MQUEUE_PACKET_SIZE > 255)
         {
-            // if cflag FIFO_STREAM_RSP_TIMEOUT is zero, use the default timeout defined in the library.
+            /* if cflag FIFO_STREAM_RSP_TIMEOUT is zero, use the default timeout defined in the library. */
             if (FIFO_STREAM_RSP_TIMEOUT == 0)
             {
                 timeout = FIFO_STREAM_RSP_TIMEOUT_MS;
@@ -716,7 +895,7 @@ int16_t coines_read_stream_sensor_data(uint8_t sensor_id,
         }
         else
         {
-            // if cflag STREAM_RSP_TIMEOUT is zero, use the default timeout defined in the library.
+            /* if cflag STREAM_RSP_TIMEOUT is zero, use the default timeout defined in the library. */
             if (STREAM_RSP_TIMEOUT == 0)
             {
                 timeout = STREAM_RSP_TIMEOUT_MS;
@@ -738,15 +917,18 @@ int16_t coines_read_stream_sensor_data(uint8_t sensor_id,
                 (void)protocol_decode_thread_stop();
                 coines_flush_intf(interface_type);
                 pthread_mutex_unlock(&mutex);
+
                 return COINES_E_DEVICE_NOT_FOUND;
             }
         }
-        
+
         if (((current_time - start_time) > READ_TIMEOUT_MS) && ret != COINES_SUCCESS)
         {
             pthread_mutex_unlock(&mutex);
+
             return COINES_E_READ_TIMEOUT;
         }
+
         pthread_mutex_unlock(&mutex);
     } while (ret != MQUEUE_SUCCESS);
 

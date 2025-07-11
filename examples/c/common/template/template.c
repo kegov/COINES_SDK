@@ -51,16 +51,14 @@ int main()
 
     if (rslt == COINES_SUCCESS)
     {
-        printf("Hardware - v%d.%d \n", (data.hardware_id & 0xF0) >> 4 , data.hardware_id & 0x0F);
-        printf("Software - v%d.%d \n", (data.software_id & 0xF0) >> 4 , data.software_id & 0x0F);
-        printf("Type of board - %d \n", data.board );
+        printf("Board Info:\n");
+        printf("Software - v%d.%d.%d\n", (data.software_id >> 12) & 0xF, (data.software_id >> 6) & 0x3F, data.software_id & 0x3F);
+        printf("Type of board - 0x%x\n", data.board );
         printf("Shuttle ID - 0x%x\n", data.shuttle_id);
     }
 
-    printf("COINES version - %s\n", coines_get_version());
-
 /* This code is only compiled for targets, TARGET=PC and TARGET=MCU_APP30 */
-#if defined(PC) || defined(MCU_APP30)
+#if defined(PC) || defined(MCU_APP31)
     FILE *fp;
     /* File is created in APP3.0 flash memory for TARGET=MCU_APP30 !*/
     fp = fopen("hello.txt", "w");

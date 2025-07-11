@@ -1,5 +1,7 @@
 COINES_INSTALL_PATH ?= ../../../..
 
+TARGET=MCU_APP31
+
 EXAMPLE_FILE ?= blinky.c
 
 
