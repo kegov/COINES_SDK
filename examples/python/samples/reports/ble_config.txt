@@ -1,16 +1,17 @@
-COINESPY version - 1.0.1
+COINESPY version - 1.0.5
 
-Adapter COB-C-008YH started scanning.
+Adapter COB-C-0039T started scanning.
 
-Adapter COB-C-008YH stopped scanning.
+Adapter COB-C-0039T stopped scanning.
 
 The following BLE devices were found:
-[0] APP Board 3.1 (90-2D) [cb:13:96:d8:90:2d] [-53 dBm]
+[0] APP Board 3.1 (E3-0E) [f0:7b:f9:0b:e3:0e] [-40 dBm]
 
-BLE connection status: Connecting to APP Board 3.1 (90-2D) [cb:13:96:d8:90:2d]
+BLE connection status: Connecting to APP Board 3.1 (E3-0E) [f0:7b:f9:0b:e3:0e]
 
 BLE connection status: Connected
-COINES SDK version: v2.9.1
-BoardInfo: HW/SW ID: 0x11/0x174
+BoardInfo
+Software ID: v1.8.4
+Type of Board: 0x9
 
 BLE connection status: Disconnected

@@ -71,6 +71,7 @@ extern const nrfx_spim_t flash_spi_instance;
 extern nrfx_spim_config_t flash_spi_config;
 static nrfx_spim_xfer_desc_t flash_spi_xfer;
 static uint8_t flash_spi_tx_buff[SPI_TX_SIZE];
+extern volatile bool spi_xfer_done;
 /**********************************************************************************/
 /* type definitions */
 /**********************************************************************************/
@@ -131,12 +132,14 @@ uint8_t w25n02kw_spi_rx_tx(uint8_t spi_entity, uint8_t address, uint8_t* tx_buff
     flash_spi_xfer.p_rx_buffer = rx_buffer;
     flash_spi_xfer.rx_length = rx_count;
 
-    if (nrfx_spim_xfer(&flash_spi_instance, &flash_spi_xfer, 0) != NRFX_SUCCESS)
+    spi_xfer_done = false;
+    nrfx_spim_xfer(&flash_spi_instance, &flash_spi_xfer, NRFX_SPIM_FLAG_TX_POSTINC|NRFX_SPIM_FLAG_RX_POSTINC|NRFX_SPIM_FLAG_REPEATED_XFER);
+
+    while (!spi_xfer_done)
     {
-        return 1;
+        coines_yield();
     }
-   
-    coines_yield();
+    
     return 0;
 }
 

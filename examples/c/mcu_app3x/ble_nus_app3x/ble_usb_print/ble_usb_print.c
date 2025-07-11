@@ -51,7 +51,7 @@ int main()
 {
     struct coines_ble_config bleconfig =
                                          {
-                                           .name = "APP3.0_BLE_USB_PRINT",
+                                           .name = "APP3.1_BLE_USB_PRINT",
                                            .tx_power = COINES_TX_POWER_0_DBM
                                          };
     coines_ble_config(&bleconfig);

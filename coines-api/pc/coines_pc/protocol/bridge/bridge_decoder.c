@@ -80,7 +80,7 @@ static int16_t receive_resp_packets(enum coines_comm_intf interface_type, uint8_
     uint32_t current_time;
     int16_t bytes_available;
     int16_t packet_idx = 0;
-
+    
     start_time = coines_get_millis();
     do
     {
@@ -112,6 +112,10 @@ static void enqueue_payload_by_cmd(uint8_t *resp_buffer, uint16_t packet_length)
     uint8_t mqueue_idx = 0;
     uint8_t offset = 0;
     uint16_t payload_length = 0;
+
+    #ifdef LOGGING_ENABLED
+    log_message("R <- ", resp_buffer, packet_length);
+    #endif
     
     if (resp_buffer[BRIDGE_PROTO_CMD_POS] == BRIDGE_PROTO_STREAM_RESP_CMD_ID)
     {
@@ -211,7 +215,10 @@ int16_t decode_packet(enum coines_comm_intf interface_type, uint8_t command, uin
 
     // Read the remaining payload
     ret = receive_resp_packets(interface_type, &resp_buffer[initial_read_len], payload_read_len);
-
+    
+    #ifdef LOGGING_ENABLED
+    log_message("R <- ", &resp_buffer[0], packet_length);
+    #endif
     if (ret != COINES_SUCCESS)
     {
         return ret;

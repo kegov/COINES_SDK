@@ -450,7 +450,7 @@ w25_nand_error_t w25n02kw_page_read(uint32_t page_num)
     /*Wait until Ready*/
     while (w25n02kw_read_reg((w25_reg_t)W25N02KW_STATUS_REG_ADDR) & W25N02KW_BUSY_STAT)
     {
-        ;
+       coines_yield();
     }
 
     return W25_NAND_READ_SUCCESS;
@@ -981,6 +981,7 @@ w25_nand_error_t w25n02kw_write_sector_with_spare(uint32_t page_num, uint8_t sec
     /* Enable write */
     (void)w25n02kw_spi_rx_tx(w25_spi_intf_handle, W25N02KW_CMD_WR_ENABLE, NULL, 0, NULL, 0);
 
+
     /*Load the data bytes into Databuffer*/
     for (txn_off = 0, txn_len = 0; txn_off < W25N02KW_SECTOR_SIZE; txn_off += txn_len)
     {
@@ -1023,7 +1024,7 @@ w25_nand_error_t w25n02kw_write_sector_with_spare(uint32_t page_num, uint8_t sec
     /*Wait until data is written to the flash*/
     while ((reg_value = w25n02kw_read_reg((w25_reg_t)W25N02KW_STATUS_REG_ADDR)) & W25N02KW_BUSY_STAT)
     {
-        ;
+        coines_yield();
     }
 
     w25n02kw_sector_buff_data_size = 0;

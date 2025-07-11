@@ -9,7 +9,7 @@ endif
 CC     = gcc
 
 
-CBUFF_SIZE ?= 104857600 # 100MB
+CBUFF_SIZE ?= 1048576 # 1MB
 MQUEUE_DEPTH ?= 100
 MQUEUE_PACKET_SIZE ?=255
 STREAM_RSP_TIMEOUT ?= 0 #Millisecond
@@ -22,7 +22,7 @@ CFLAGS += -std=c99 -D$(PLATFORM) -c -O0 -g -Wall -D$(DRIVER)
 LIB_DIR=../../../libraries
 
 C_SRCS_COINES += \
-../coines_common.c \
+../../coines_common.c \
 error_handling/error_handling.c \
 api/api.c \
 api/board_specific/gpio/gpio.c \
@@ -49,12 +49,18 @@ else
 	platform/common/serial/sync_comm/sync_comm_unix.c
 endif
 
+ifeq ($(LOGGING),1)
+	C_SRCS_COINES += \
+    logger/logger.c 
+endif
+
+
 C_SRCS_COINES += \
 platform/common/ble/simpleble-0.6.0/ble.c
 
 
 INCLUDEPATHS_COINES += \
-.. \
+../.. \
 $(LIB_DIR)/mqueue_host \
 $(LIB_DIR)/circular_buffer \
 error_handling \
@@ -80,6 +86,11 @@ else
 	INCLUDEPATHS_COINES += \
 	platform/common/serial/libusbp-1.0/includes \
 	platform/common/serial/sync_comm
+endif
+
+ifeq ($(LOGGING),1)
+	INCLUDEPATHS_COINES += \
+    logger
 endif
 
 INCLUDEPATHS_COINES += \

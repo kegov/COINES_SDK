@@ -25,6 +25,7 @@ $(COMMON)/mcu_app3x_support.c \
 $(COMMON)/mcu_app3x_interface.c \
 $(COMMON)/mcu_app3x.c \
 $(COMMON)/mcu_app3x_stream.c \
+$(COMMON)/mcu_app3x_interface_spi_nb.c \
 $(THIRD_PARTY_DIR)/ds28e05/ds28e05.c \
 $(LIB_DIR)/w25_common/w25_common.c \
 $(LIB_DIR)/w25m02gw/w25m02gw.c \

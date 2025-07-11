@@ -141,8 +141,10 @@ static void platform_ble_notify_callback(void *buffer, uint32_t length) {
  */
 int16_t platform_serial_read_thread_start(void)
 {
-	int16_t ret;
+	int32_t ret;
+	pthread_mutex_lock(&serial_read_mutex);
 	is_read_thread_running = true;
+	pthread_mutex_unlock(&serial_read_mutex);
 	ret = pthread_create(&platform_serial_read_thread, NULL, platform_serial_read_thread_func, NULL);
 	if ( ret != COINES_SUCCESS) 
 	{
@@ -156,7 +158,7 @@ int16_t platform_serial_read_thread_start(void)
  */
 int16_t platform_serial_read_thread_stop(void)
 {
-	int16_t ret;
+	int32_t ret;
 	
 	pthread_mutex_lock(&serial_read_mutex);
 	is_read_thread_running = false;

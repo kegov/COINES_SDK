@@ -38,43 +38,55 @@
 #include <stdio.h>
 
 #include "coines.h"
+#include "mcu_app3x_support.h"
 
 /**********************************************************************************/
 /* macro definitions */
 /**********************************************************************************/
-/*! Interface instances*/
-#define SPIM_TWIM_INSTANCE_0 0
-#define SPIM_TWIM_INSTANCE_1 1
-#define SPIM_TWIM_INSTANCE_2 2
-#define SPIM_TWIM_INSTANCE_3 3
+
+/*! I2C instances - There are two I2C instances in NRF52840 */ 
+#define TWIM0_INSTANCE               0
+#define TWIM1_INSTANCE               1
+
+#define NRFX_TWIM0_INSTANCE NRFX_TWIM_INSTANCE(0)
+#define NRFX_TWIM1_INSTANCE NRFX_TWIM_INSTANCE(1)
+
+/*! SPI instances - There are four I2C instances in NRF52840*/
+#define SPIM2_INSTANCE               2
+#define SPIM3_INSTANCE               3
+
+#if defined(MCU_APP31)
+#define NRFX_SPIM0_INSTANCE NRFX_SPIM_INSTANCE(0)
+#endif
+#define NRFX_SPIM1_INSTANCE NRFX_SPIM_INSTANCE(1)
+#define NRFX_SPIM2_INSTANCE NRFX_SPIM_INSTANCE(2)
+#define NRFX_SPIM3_INSTANCE NRFX_SPIM_INSTANCE(3)
+
 
 /*! I2C timeout in milliseconds */
 #define I2C_TIMEOUT_MS               (1000)
 #if defined(MCU_APP30) || defined(MCU_APP31)
 /*! I2C pins for primary (Sensor) interface */
-#define TWIM0_INSTANCE               0
 #define I2C0_SEN_SDA_PIN             NRF_GPIO_PIN_MAP(0, 6)
 #define I2C0_SEN_SCL_PIN             NRF_GPIO_PIN_MAP(0, 16)
 
-/*! I2C pins for temperature sensor (On-board) interface */
-#define TWIM1_INSTANCE               1
-#define I2C1_INTERNAL_TEMP_SDA_PIN   NRF_GPIO_PIN_MAP(0, 29)
-#define I2C1_INTERNAL_TEMP_SCL_PIN   NRF_GPIO_PIN_MAP(0, 26)
+/*! I2C pins for temperature sensor (On-board) interface and PMIC */
+#define I2C_INTERNAL_SDA_PIN   NRF_GPIO_PIN_MAP(0, 29)
+#define I2C_INTERNAL_SCL_PIN   NRF_GPIO_PIN_MAP(0, 26)
+
 #elif defined(MCU_HEAR3X)
 /*! I2C pins for primary (Sensor) interface */
-#define TWIM0_INSTANCE               0
 #define I2C0_SEN_SDA_PIN             NRF_GPIO_PIN_MAP(0, 15)
 #define I2C0_SEN_SCL_PIN             NRF_GPIO_PIN_MAP(0, 24)
 
-/*! I2C pins for temperature sensor (On-board) interface */
-#define TWIM1_INSTANCE               1
-#define I2C1_INTERNAL_TEMP_SDA_PIN   NRF_GPIO_PIN_MAP(0, 13)
-#define I2C1_INTERNAL_TEMP_SCL_PIN   NRF_GPIO_PIN_MAP(0, 14)
+/*! I2C pins for temperature sensor (On-board) interface and PMIC */
+#define I2C_INTERNAL_SDA_PIN   NRF_GPIO_PIN_MAP(0, 13)
+#define I2C_INTERNAL_SCL_PIN   NRF_GPIO_PIN_MAP(0, 14)
 #endif
 
-/*! I2C pins for external temperature sensor (Adapter board) interface */
-#define I2C1_EXTERNAL_TEMP_SDA_PIN   NRF_GPIO_PIN_MAP(0, 13)    /* GPIO PIN - 1 */
-#define I2C1_EXTERNAL_TEMP_SCL_PIN   NRF_GPIO_PIN_MAP(0, 14)    /* GPIO PIN - 0 */
+/*! I2C pins for secondary (Sensor) interface */
+#define I2C1_SEN_SDA_PIN   NRF_GPIO_PIN_MAP(0, 13)    /* GPIO PIN - 1 */
+#define I2C1_SEN_SCL_PIN   NRF_GPIO_PIN_MAP(0, 14)    /* GPIO PIN - 0 */
 
 /*! Macro definitions for enable/disable */
 #define COINES_DISABLE               UINT8_C(0x00)
@@ -85,20 +97,18 @@
 #define COINES_I2C_TX_SUCCESS        UINT8_C(1)
 #define COINES_I2C_TX_FAILED         UINT8_C(2)
 
+#define REG_ADDR_BUFFER_SIZE 2
+
 /*! SPI pins for primary (Sensor) interface */
-#if defined(MCU_APP30)
-#define SPIM0_INSTANCE               3
-#elif defined(MCU_APP31)/*MCU_APP31*/
-#define SPIM0_INSTANCE               0
-#endif
 #if defined(MCU_APP30) || defined(MCU_APP31)
+#define SPIM0_INSTANCE               3
+
 #define SPI0_SEN_MOSI_PIN            NRF_GPIO_PIN_MAP(0, 6) /* GPIO PIN - 43 */
 #define SPI0_SEN_MISO_PIN            NRF_GPIO_PIN_MAP(0, 15) /* GPIO PIN - 3 */
 #define SPI0_SEN_SCK_PIN             NRF_GPIO_PIN_MAP(0, 16) /* GPIO PIN - 4 */
 #define SPI0_SEN_CS_PIN              NRF_GPIO_PIN_MAP(0, 24) /* GPIO PIN - 5 */
 
 #elif defined(MCU_HEAR3X)
-#define SPIM0_INSTANCE               3
 
 #define SPI0_SEN_MOSI_PIN            NRF_GPIO_PIN_MAP(0, 15) /* GPIO PIN - 43 */
 #define SPI0_SEN_MISO_PIN            NRF_GPIO_PIN_MAP(0, 16) /* GPIO PIN - 3 */
@@ -106,20 +116,45 @@
 #define SPI0_SEN_CS_PIN              NRF_GPIO_PIN_MAP(0, 25) /* GPIO PIN - 5 */
 #endif
 
-/*! SPI pins for secondary (OIS) interface */
-#define SPIM1_INSTANCE               3
-#define SPI1_OIS_MOSI_PIN            NRF_GPIO_PIN_MAP(1, 10) /* GPIO PIN - 38 MOSI */
-#define SPI1_OIS_MISO_PIN            NRF_GPIO_PIN_MAP(1, 11) /* GPIO PIN - 39 MIS0 */
-#define SPI1_OIS_SCK_PIN             NRF_GPIO_PIN_MAP(1, 2) /* GPIO PIN - 36 SCLK */
-#define SPI1_OIS_CS_PIN              NRF_GPIO_PIN_MAP(1, 3) /* GPIO PIN - 37 CS */
+/*! SPI pins for secondary interface and OIS */
+#define SPI1_SEN_MOSI_PIN            NRF_GPIO_PIN_MAP(1, 10) /* GPIO PIN - 38 MOSI */
+#define SPI1_SEN_MISO_PIN            NRF_GPIO_PIN_MAP(1, 11) /* GPIO PIN - 39 MIS0 */
+#define SPI1_SEN_SCK_PIN             NRF_GPIO_PIN_MAP(1, 2) /* GPIO PIN - 36 SCLK */
+#define SPI1_SEN_CS_PIN              NRF_GPIO_PIN_MAP(1, 3) /* GPIO PIN - 37 CS */
 
 /*! SPI pins for external flash chip */
-#define SPIM3_INSTANCE               2
-#define SPI3_QSPI_MOSI_PIN           NRF_GPIO_PIN_MAP(0, 20) /* GPIO PIN - 50 MOSI */
-#define SPI3_QSPI_MISO_PIN           NRF_GPIO_PIN_MAP(0, 21) /* GPIO PIN - 48 MIS0 */
-#define SPI3_QSPI_SCK_PIN            NRF_GPIO_PIN_MAP(0, 19) /* GPIO PIN - 52 SCLK */
-#define SPI3_QSPI_CS_PIN             NRF_GPIO_PIN_MAP(0, 17) /* GPIO PIN - 51 CS */
+#define SPI_FLASH_MOSI_PIN           NRF_GPIO_PIN_MAP(0, 20) /* GPIO PIN - 50 MOSI */
+#define SPI_FLASH_MISO_PIN           NRF_GPIO_PIN_MAP(0, 21) /* GPIO PIN - 48 MIS0 */
+#define SPI_FLASH_SCK_PIN            NRF_GPIO_PIN_MAP(0, 19) /* GPIO PIN - 52 SCLK */
+#define SPI_FLASH_CS_PIN             NRF_GPIO_PIN_MAP(0, 17) /* GPIO PIN - 51 CS */
 
+/**********************************************************************************/
+/* typedef */
+/**********************************************************************************/
+/*! 
+ * @brief Structure defining the configuration and state of a COINES I2C interface instance. 
+ */
+typedef struct coines_i2c
+{
+    uint8_t instance;
+    const nrfx_twim_t peripheral_instance;
+    bool enabled;
+    volatile uint8_t txrx_status;
+    nrfx_twim_config_t config;
+    coines_i2c_callback event_handler;
+} coines_i2c_intf_t;
+
+/*! 
+ * @brief Structure defining the configuration and state of a COINES SPI interface instance. 
+ */
+typedef struct coines_spi
+{
+    uint8_t instance;
+    const nrfx_spim_t peripheral_instance;
+    bool enabled;
+    nrfx_spim_config_t config;
+    nrfx_spim_xfer_desc_t txrx_desc;
+} coines_spi_intf_t;
 
 /**********************************************************************************/
 /* data structure declarations  */
@@ -132,7 +167,7 @@ extern uint8_t multi_io_map[];
 enum coines_i2c_pin_map {
     COINES_I2C_PIN_DEFAULT,         /*< Default state to ignore pin mapping */
     COINES_I2C_PIN_PRIMARY,         /*< Pin mapping for primary sensor */
-    COINES_I2C_PIN_INTERNAL_TEMP,   /*< Pin mapping for internal (BLE) temperature */
+    COINES_I2C_PIN_INTERNAL,        /*< Pin mapping for internal (BLE) temperature and/or PMIC */
     COINES_I2C_PIN_SECONDARY       /*< Pin mapping for secondary sensor(AUX) */
 };
 

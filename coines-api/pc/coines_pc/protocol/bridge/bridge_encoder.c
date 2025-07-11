@@ -130,7 +130,10 @@ static int16_t encoder(enum coines_comm_intf interface_type,
         {
             bytes_to_write = packet_size_limit;
         }
-
+        #ifdef LOGGING_ENABLED
+        // Print the message in hex format before sending
+        log_message("S -> ", &cmd_packet[pi], bytes_to_write);
+        #endif
         ret = interface_send_packet(interface_type, &cmd_packet[pi], bytes_to_write);
         if (ret != COINES_SUCCESS)
         {

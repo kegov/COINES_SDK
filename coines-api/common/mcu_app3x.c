@@ -61,6 +61,8 @@
 #define CPU_FREQ_HZ                    64000000   /**<ARM cortex M4 is running at 64Mhz*/
 #define BLE_MTU                        244   /*Maximum payload for BLE com*/
 
+extern uint8_t coines_spi_twi_instances[4];
+volatile bool pmic_dummy_read_pending = false;
 volatile bool serial_connected = false;
 static uint8_t serial_buffer[RX_BUFFER_SIZE] = { 0 };
 static volatile uint16_t serial_idx = 0, read_idx = 0;
@@ -84,6 +86,7 @@ volatile uint32_t millis_count;
 volatile uint32_t systick_count;
 volatile uint32_t pend_flag2, pend_flag;
 struct coines_comm_intf_config *comm_intf_config =NULL;
+
 /*lint -e26 */
 #if defined(MCU_APP30)
 uint8_t multi_io_map[COINES_SHUTTLE_PIN_MAX] = {
@@ -479,6 +482,7 @@ static uint32_t external_flash_init(void)
             (void)flogfs_mount();
         }
     }
+    coines_spi_twi_instances[SPIM2_INSTANCE] = COINES_ENABLE;
     return ret_status;
 }
 
@@ -672,9 +676,82 @@ void coines_get_device_ficr(uint64_t * devid)
     devid[1] = (uint64_t) device_id1;
 }
 
-
-
 #if defined(MCU_APP31) ||  defined(MCU_HEAR3X)
+/*!
+ * @brief Sets a flag to indicate that a dummy PMIC read is pending.
+ */
+void pmic_cyclic_dummy_read_handler(void)
+{
+    pmic_dummy_read_pending = true;   
+}
+
+/*!
+ * @brief Performs a dummy read operation on the PMIC.
+ */
+void pmic_dummy_read(void)
+{
+    uint8_t read_data = 0;
+    if (pmic_dummy_read_pending)
+    {
+        pmic_dummy_read_pending = false;
+        (void)bq_read_reg(BQ_STATUS_AND_MODE_CTRL_REG, &read_data, 1, &pmic_dev);
+    } 
+}
+
+/*!
+ * @brief Switches the PMIC cyclic read mode between actual read and dummy read.
+ *
+ * This function stops the current PMIC cyclic read timer, reconfigures it with the appropriate 
+ * handler (either for actual cyclic reading or dummy reading), and restarts the timer. 
+ * The dummy read mode is used to prevent the watchdog timer from resetting when actual 
+ * PMIC reading is not required.
+ *
+ * @param[in] read_type : Specifies the type of PMIC cyclic read to perform.
+ *                        - COINES_PMIC_DUMMY_CYCLIC_READ: Perform dummy cyclic read.
+ *                        - COINES_PMIC_CYCLIC_READ: Perform actual cyclic read.
+ *
+ * @return None
+ */
+int8_t switch_pmic_cyclic_read(enum coines_pmic_read_type read_type)  
+{
+    void (*pmic_read_handler)(void);
+
+    if (read_type > COINES_PMIC_CYCLIC_READ)
+    {
+        return COINES_E_FAILURE;
+    }
+    
+    if (read_type == COINES_PMIC_CYCLIC_READ)
+    {
+        pmic_dummy_read();
+    }
+    else{
+        pmic_cyclic_reading();
+    }
+
+    if (read_type == COINES_PMIC_DUMMY_CYCLIC_READ)
+    {
+        pmic_read_handler = pmic_cyclic_dummy_read_handler;
+    }
+    else
+    {
+        pmic_read_handler = pmic_cyclic_reading;
+    }
+    
+    /* Stop pmic_cyclic read timer and re-intialize with handler */
+    (void)coines_timer_stop(COINES_TIMER_INSTANCE_1);
+    (void)coines_timer_deconfig(COINES_TIMER_INSTANCE_1);
+    if (COINES_SUCCESS != coines_timer_config(COINES_TIMER_INSTANCE_1, pmic_read_handler))
+    {
+        return COINES_E_TIMER_INIT_FAILED;
+    }
+    else
+    {
+        (void)coines_timer_start(COINES_TIMER_INSTANCE_1, 30000000);
+    }
+
+    return COINES_SUCCESS;
+}
 
 /*!
  * @brief Function to get last obtained value of the battery level in percent.
@@ -691,7 +768,6 @@ void pmic_cyclic_reading(void)
 {
     uint8_t bat_vbbm = 0;
 
-
     struct fault_mask_reg faults;
 
     /*update battery percentage*/
@@ -707,13 +783,11 @@ void pmic_cyclic_reading(void)
         battery_meas_rslt = COINES_E_FAILURE;
     }
 
-
     /*Check battery and get faults*/
     if (pmic_dev.battery_connected == 0)
     {
         pmic_check_battery_and_faults(&pmic_dev, &faults);
     }
-
 }
 
 #endif
@@ -740,8 +814,28 @@ static void eeprom_init(void)
         }
     }
 }
-
 #endif
+
+/*!
+ * @brief Disable the BLE service.
+ */
+void ble_service_disable(void)
+{
+    ble_sd_disable();
+}
+
+/*!
+ * @brief Enable the BLE service.
+ */
+void ble_service_enable(void)
+{
+    ble_service_init_t init_handle = {
+        .temp_read_callback = temp_data_read_callback, .batt_status_read_callback = bat_status_read_callback,
+        .data_rx_callback = NULL, .adv_name = ble_device_name, .tx_power = (int8_t)ble_tx_power
+    };
+    ble_service_init(&init_handle);
+}
+
 /*!
  * @brief This API is used to initialize the communication according to interface type.
  */
@@ -953,6 +1047,7 @@ int16_t coines_open_comm_intf(enum coines_comm_intf intf_type, void *arg)
 
     /* Initialize i2c interface */
     (void)common_i2c_init();
+    coines_spi_twi_instances[TWIM1_INSTANCE] = COINES_ENABLE;
 
     /* Initialize power module */
     (void)common_pmic_cd_init();
@@ -1068,6 +1163,7 @@ int16_t coines_get_pin_config(enum coines_multi_io_pin pin_number,
                               enum coines_pin_value *pin_value)
 {
     uint32_t pin_num = multi_io_map[pin_number];
+    enum coines_pin_direction pin_dir = COINES_PIN_DIRECTION_IN;
 
     if (pin_num == 0 || pin_num == 0xff)
     {
@@ -1076,14 +1172,23 @@ int16_t coines_get_pin_config(enum coines_multi_io_pin pin_number,
 
     if ((pin_value != NULL) || (pin_direction != NULL))
     {
-        if (pin_value != NULL)
-        {
-            *pin_value = (enum coines_pin_value)nrf_gpio_pin_read(pin_num);
-        }
+        pin_dir = (enum coines_pin_direction)nrf_gpio_pin_dir_get(pin_num);
 
         if (pin_direction != NULL)
         {
-            *pin_direction = (enum coines_pin_direction)nrf_gpio_pin_dir_get(pin_num);
+            *pin_direction = pin_dir;
+        }
+
+        if (pin_value != NULL)
+        {
+            if(pin_dir == COINES_PIN_DIRECTION_IN)
+            {
+                *pin_value = (enum coines_pin_value)nrf_gpio_pin_read(pin_num);
+            }
+            else
+            {
+                *pin_value = (enum coines_pin_value)nrf_gpio_pin_out_read(pin_num);
+            }
         }
 
         return COINES_SUCCESS;
@@ -1630,36 +1735,29 @@ int closedir(DIR *dirp)
  */
 int16_t coines_read_temp_data(float *temp_data)
 {
-    int16_t error;
+    int16_t rslt;
     uint8_t temp_sens_dev_addr = TMP112Q1_DEV_ADDRESS;
     uint8_t reg_addr = TMP112Q1_REG_ADDRESS;
     uint8_t read_length = 2;
     uint8_t temp_buffer[read_length];
     uint16_t temp_raw_data;
 
-    enum coines_i2c_bus temp_bus_intf = COINES_I2C_BUS_1;
+    enum coines_i2c_bus temp_bus_intf = COINES_I2C_BUS_INT;
 
-    if (coines_is_i2c_enabled(temp_bus_intf))
-    {
-        /* Send dummy data (0) or preserve and send previous read temp data */
-        *temp_data = 0;
-
-        return COINES_SUCCESS;
-    }
-    else
+    if (!coines_is_i2c_enabled(temp_bus_intf))
     {
         /* Configure I2C_BUS_1 for onboard temperature sensor */
-        error = coines_config_i2c_bus_internal(temp_bus_intf, COINES_I2C_STANDARD_MODE, COINES_I2C_PIN_INTERNAL_TEMP);
+        rslt = coines_config_i2c_bus_internal(temp_bus_intf, COINES_I2C_STANDARD_MODE, COINES_I2C_PIN_INTERNAL);
 
-        if (COINES_SUCCESS != error)
+        if (COINES_SUCCESS != rslt)
         {
-            return error;
+            return rslt;
         }
     }
 
-    error = coines_read_i2c(temp_bus_intf, temp_sens_dev_addr, reg_addr, temp_buffer, read_length);
+    rslt = coines_read_i2c(temp_bus_intf, temp_sens_dev_addr, reg_addr, temp_buffer, read_length);
 
-    if (COINES_SUCCESS == error)
+    if (COINES_SUCCESS == rslt)
     {
         temp_raw_data = (uint16_t)temp_buffer[0];
         temp_raw_data = (uint16_t)((temp_raw_data << 4) | (temp_buffer[1] >> 4));
@@ -1679,7 +1777,7 @@ int16_t coines_read_temp_data(float *temp_data)
         }
     }
 
-    return error;
+    return rslt;
 }
 #endif
 /*!
@@ -1835,7 +1933,9 @@ int16_t coines_set_led(enum coines_led led, enum coines_led_state led_state)
 
     return retval;
 }
+#endif
 
+#if defined(MCU_APP31) || defined(MCU_HEAR3X)
 /*!
  * @brief This API is used to switch off the board
  */

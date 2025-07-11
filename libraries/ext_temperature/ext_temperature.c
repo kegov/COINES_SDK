@@ -108,17 +108,8 @@ int8_t external_temp_interface_init(struct external_temp_dev *temp_dev)
 
         coines_delay_msec(100);
 
-        if(true == coines_is_i2c_enabled(COINES_I2C_BUS_1))
-        {
-            rslt = EXTERNAL_TEMP_SUCCESS;
-        }
-        else
-        {
-            /* Configures for I2C bus 1, speed 400KHz, pin mapping for reading temperature */
-            rslt = coines_config_i2c_bus_internal(COINES_I2C_BUS_1, COINES_I2C_FAST_MODE, COINES_I2C_PIN_INTERNAL_TEMP);
-        }
-        
-        temp_intf_conf.external_temp_bus = COINES_I2C_BUS_1;
+        (void)coines_config_i2c_bus(COINES_I2C_BUS_INT, COINES_I2C_FAST_MODE);
+        temp_intf_conf.external_temp_bus = COINES_I2C_BUS_INT;
         temp_intf_conf.external_temp_dev_addr = EXTERNAL_TEMP_I2C_ADDR;
 
         /* Assign device address to interface pointer */

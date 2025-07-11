@@ -1,5 +1,7 @@
 COINES_INSTALL_PATH ?= ../../../..
 
+TARGET=MCU_APP31
+
 EXAMPLE_FILE ?= external_temp.c
 
 LIBRARY_LOCATION ?= $(COINES_INSTALL_PATH)/libraries/ext_temperature

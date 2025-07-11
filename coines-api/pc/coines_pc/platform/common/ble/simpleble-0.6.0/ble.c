@@ -61,9 +61,10 @@
 /*********************************************************************/
 /* local macro definitions */
 /*********************************************************************/
-#define BLE_PERIPHERAL_LIST_SIZE  UINT8_C(40)
-#define MIN_SCAN_TIMEOUT_MS       5000
-#define COM_READ_BUFF             2048
+#define BLE_PERIPHERAL_LIST_SIZE  UINT8_C(255)
+#define MIN_SCAN_TIMEOUT_MS       1000
+#define MAX_SCAN_TIMEOUT_MS       30000
+#define BLE_COM_READ_BUFF         3072
 
 #define NORDIC_UART_SERVICE_UUID  "6e400001-b5a3-f393-e0a9-e50e24dcca9e"
 #define NORDIC_UART_CHAR_RX       "6e400002-b5a3-f393-e0a9-e50e24dcca9e"
@@ -74,11 +75,16 @@
 /*********************************************************************/
 /* global variables */
 /*********************************************************************/
-simpleble_uuid_t nordic_uart_service_uuid;
-simpleble_uuid_t nordic_uart_char_rx;
-simpleble_uuid_t nordic_uart_char_tx;
-bool has_tx_notified = false;
+simpleble_uuid_t nordic_uart_service_uuid = { NORDIC_UART_SERVICE_UUID };
+simpleble_uuid_t nordic_uart_char_rx = { NORDIC_UART_CHAR_RX };
+simpleble_uuid_t nordic_uart_char_tx = { NORDIC_UART_CHAR_TX };
+volatile bool has_tx_notified = false;
+
+/*********************************************************************/
+/* extern variables */
+/*********************************************************************/
 extern uint8_t proto_stop_resp_arr[PROTO_STOP_RESP_LEN];
+
 /**********************************************************************************/
 /* struct declarations */
 /**********************************************************************************/
@@ -98,15 +104,15 @@ struct local_ble_peripheral_info
 static simpleble_peripheral_t selected_peripheral = NULL;
 static uint8_t peripheral_list_len = 0;
 static simpleble_adapter_t selected_adapter = NULL;
-static int8_t ble_scan_result = COINES_SUCCESS;
 static bool is_ble_peripheral_connected = false;
 static struct local_ble_peripheral_info ble_peripheral_info_list[BLE_PERIPHERAL_LIST_SIZE];
 static bool is_write_data_chunked = false;
 static uint32_t expected_write_data_length = 0;
 static uint32_t actual_write_data_length = 0;
 static bool ble_scan_completed = false;
-static volatile uint16_t write_idx = 0, read_idx = 0;
 static circular_buffer_t ble_cbuf;
+static bool is_internal_ble_scan = false;
+static bool is_stream_running = false;
 
 /*********************************************************************/
 /* static function declarations */
@@ -124,14 +130,38 @@ static void peripheral_on_notify(simpleble_uuid_t service,
 static void peripheral_on_connect(simpleble_peripheral_t peripheral, void *userdata);
 static void peripheral_on_disconnect(simpleble_peripheral_t peripheral, void *userdata);
 static int8_t ble_notify(void);
-static int8_t connect_to_ble_peripheral(int8_t ble_peripheral_index);
+static int8_t connect_to_ble_peripheral(int16_t ble_peripheral_index);
 
 static ble_notify_callback_t notify_callback = NULL;
 
 /*********************************************************************/
 /* Local functions */
 /*********************************************************************/
+/*!
+ * @brief Function to reset BLE state variables
+ *
+ */
+static void reset_ble_state(void)
+{
+    selected_peripheral = NULL;
+    peripheral_list_len = 0;
+    selected_adapter = NULL;
+    is_ble_peripheral_connected = false;
+    memset(ble_peripheral_info_list, 0, sizeof(ble_peripheral_info_list));
+    is_write_data_chunked = false;
+    expected_write_data_length = 0;
+    actual_write_data_length = 0;
+    ble_scan_completed = false;
+    circular_buffer_free_space(&ble_cbuf);
+    is_internal_ble_scan = false;
+    is_stream_running = false;
+    has_tx_notified = false;
+}
 
+/*!
+ * @brief Function to compare two peripheral info structures based on RSSI value
+ *
+ */
 static int compare_rssi(const void *a, const void *b)
 {
     const struct local_ble_peripheral_info *p1 = (const struct local_ble_peripheral_info *)a;
@@ -183,7 +213,7 @@ static int8_t get_ble_index_by_key(ble_index_key key, void *value)
     char* peripheral_identifier;
     char* peripheral_address;
 
-    for (int8_t i = 0; i < peripheral_list_len; i++)
+    for (uint8_t i = 0; i < peripheral_list_len; i++)
     {
         peripheral_identifier = ble_peripheral_info_list[i].ble_identifier;
         peripheral_address = ble_peripheral_info_list[i].ble_address;
@@ -239,16 +269,17 @@ static void peripheral_on_disconnect(simpleble_peripheral_t peripheral, void *us
 {
     (void)peripheral;
     (void)userdata;
-    is_ble_peripheral_connected = false;
-    ble_scan_completed = false;
-    // clean_on_exit();
-    // handle_dll_deinit();
+    reset_ble_state();
+    /*
+     * clean_on_exit();
+     * handle_dll_deinit();
+     */
 }
 
 /*!
  * @brief connects to the peripheral whose index is given as ble_peripheral_index
  */
-static int8_t connect_to_ble_peripheral(int8_t ble_peripheral_index)
+static int8_t connect_to_ble_peripheral(int16_t ble_peripheral_index)
 {
     int8_t error_code;
     char *peripheral_identifier, *peripheral_address;
@@ -271,7 +302,7 @@ static int8_t connect_to_ble_peripheral(int8_t ble_peripheral_index)
 static void clean_on_exit(void)
 {
     /* Release all saved peripherals */
-    for (int8_t i = 0; i < peripheral_list_len; i++)
+    for (uint8_t i = 0; i < peripheral_list_len; i++)
     {
         simpleble_peripheral_release_handle(ble_peripheral_info_list[i].ble_peripheral);
     }
@@ -298,7 +329,7 @@ static void adapter_on_scan_found(simpleble_adapter_t adapter, simpleble_periphe
         return;
     }
 
-    if (peripheral_list_len < BLE_PERIPHERAL_LIST_SIZE)
+    if (peripheral_list_len < BLE_PERIPHERAL_LIST_SIZE && (strcmp(peripheral_identifier, "") != 0))
     {
         /* Save the peripheral */
         strcpy(ble_peripheral_info_list[peripheral_list_len].ble_identifier, peripheral_identifier);
@@ -335,7 +366,6 @@ static void track_write_data(size_t data_length)
     }
 }
 
-
 /*!
  * @brief callback function to store device response on TX notify
  */
@@ -351,21 +381,26 @@ static void peripheral_on_notify(simpleble_uuid_t service,
 
     if (notify_callback != NULL)
     {
+        is_stream_running = true;
         notify_callback((uint8_t*) data, data_length);
-        has_tx_notified = true;
     }
     else
     {
         // Reset the buffer to clear all streaming response data if stream stop is triggered
         if(memcmp(data, proto_stop_resp_arr, sizeof(proto_stop_resp_arr)) == 0)
         {   
+            is_stream_running = false;
             circular_buffer_reset(&ble_cbuf);
         }
 
-        /* Write to buffer */
-        circular_buffer_put(&ble_cbuf, (uint8_t*) data, data_length);
-        has_tx_notified = true;
+        if (!is_stream_running)
+        {
+            /* Write to buffer */
+            circular_buffer_put(&ble_cbuf, (uint8_t*) data, data_length);
+        }
+        
     }
+    has_tx_notified = true;
 
     /*lint -e1746 parameter cannot be chaged to const*/
 }
@@ -398,6 +433,10 @@ static void adapter_on_scan_start(simpleble_adapter_t adapter, void* userdata)
     {
         return;
     }
+
+    /*  clear scan details */
+    memset(&ble_peripheral_info_list, 0, sizeof(ble_peripheral_info_list));
+    peripheral_list_len = 0;
 
     printf("\nAdapter %s started scanning.\n", identifier);
 
@@ -463,9 +502,7 @@ int8_t ble_scan(struct ble_peripheral_info *ble_info, uint8_t *peripheral_count,
 
     if (!handle_dll_init())
     {
-        ble_scan_result = PLATFORM_BLE_LIB_NOT_LOADED;
-
-        return ble_scan_result;
+        return PLATFORM_BLE_LIB_NOT_LOADED;
     }
 
     /* Disable SimpleBLE library logs */
@@ -474,25 +511,19 @@ int8_t ble_scan(struct ble_peripheral_info *ble_info, uint8_t *peripheral_count,
     size_t adapter_count = simpleble_adapter_get_count();
     if (adapter_count == 0)
     {
-        ble_scan_result = PLATFORM_BLE_ADAPTOR_NOT_FOUND;
-
-        return ble_scan_result;
+        return PLATFORM_BLE_ADAPTOR_NOT_FOUND;
     }
 
     /* TO DO: Automatically select host PC as adaptor */
     selected_adapter = simpleble_adapter_get_handle(0);
     if (selected_adapter == NULL)
     {
-        ble_scan_result = PLATFORM_BLE_ADAPTOR_NOT_FOUND;
-
-        return ble_scan_result;
+        return PLATFORM_BLE_ADAPTOR_NOT_FOUND;
     }
 
     if (!simpleble_adapter_is_bluetooth_enabled())
     {
-        ble_scan_result = PLATFORM_BLE_ADAPTER_BLUETOOTH_NOT_ENABLED;
-
-        return ble_scan_result;
+        return PLATFORM_BLE_ADAPTER_BLUETOOTH_NOT_ENABLED;
     }
 
     (void)simpleble_adapter_set_callback_on_scan_start(selected_adapter, adapter_on_scan_start, NULL);
@@ -504,39 +535,45 @@ int8_t ble_scan(struct ble_peripheral_info *ble_info, uint8_t *peripheral_count,
         scan_timeout_ms = MIN_SCAN_TIMEOUT_MS;
     }
 
-    (void)simpleble_adapter_scan_for(selected_adapter, (int)scan_timeout_ms);
-    if (ble_peripheral_info_list[0].ble_peripheral == NULL && peripheral_list_len <= 1)
+    if (scan_timeout_ms > MAX_SCAN_TIMEOUT_MS)
     {
-        ble_scan_result = PLATFORM_BLE_PERIPHERAL_NOT_FOUND;
+        scan_timeout_ms = MAX_SCAN_TIMEOUT_MS;
+    }
 
-        return ble_scan_result;
+    (void)simpleble_adapter_scan_for(selected_adapter, (int)scan_timeout_ms);
+    if (ble_peripheral_info_list[0].ble_peripheral == NULL && peripheral_list_len == 0)
+    {
+        return PLATFORM_BLE_PERIPHERAL_NOT_FOUND;
     }
 
     /* Sort the BLE devices found based on rssi value */
     qsort(ble_peripheral_info_list, peripheral_list_len, sizeof(struct local_ble_peripheral_info), compare_rssi);
 
-    printf("\nThe following BLE devices were found:\n");
-    if (ble_info != NULL)
+    // If the user has not provided a buffer and pointer for storing BLE info and Periperal count, then return error
+    if(!is_internal_ble_scan && (ble_info == NULL || peripheral_count == NULL))
     {
-        *peripheral_count = peripheral_list_len;
+        return COINES_E_MEMORY_ALLOCATION;
     }
 
-    for (int8_t i = 0; i < peripheral_list_len; i++)
+    printf("\nThe following BLE devices were found:\n");
+    for (uint8_t i = 0; i < peripheral_list_len; i++)
     {
         peripheral_identifier = ble_peripheral_info_list[i].ble_identifier;
         peripheral_address = ble_peripheral_info_list[i].ble_address;
         peripheral_rssi = ble_peripheral_info_list[i].ble_rssi;
         printf("[%d] %s [%s] [%d dBm]\n", i, peripheral_identifier, peripheral_address, peripheral_rssi);
-        if (ble_info != NULL)
-        {
+        if(!is_internal_ble_scan){
             strcpy(ble_info[i].ble_identifier, peripheral_identifier);
             strcpy(ble_info[i].ble_address, peripheral_address);
         }
     }
+    if(!is_internal_ble_scan){
+        *peripheral_count = peripheral_list_len;
+    }
 
     ble_scan_completed = true;
 
-    return ble_scan_result;
+    return COINES_SUCCESS;
 }
 
 /*!
@@ -545,25 +582,26 @@ int8_t ble_scan(struct ble_peripheral_info *ble_info, uint8_t *peripheral_count,
 int8_t ble_connect(struct ble_peripheral_info *ble_config)
 {
     int8_t error_code;
-    int8_t ble_peripheral_index = -1;
-    int8_t closest_app_board_index = -1;
+    int16_t ble_peripheral_index = -1;
+    int16_t closest_app_board_index = -1;
 
-    if (!ble_scan_completed && ble_scan_result == COINES_SUCCESS)
-    {
-        error_code = ble_scan(NULL, NULL, 0);
+    if (!ble_scan_completed)
+    {   
+        is_internal_ble_scan = true;
+        if (ble_config != NULL && ble_config->scan_timeout > 0)
+        {
+            error_code = ble_scan(NULL, NULL, ble_config->scan_timeout);
+        }
+        else
+        {
+            error_code = ble_scan(NULL, NULL, 0);
+        }
+        is_internal_ble_scan = false;
         if (error_code != COINES_SUCCESS)
         {
-            return PLATFORM_BLE_PERIPHERAL_NOT_FOUND;
+            return error_code;
         }
     }
-    else if (ble_scan_result != COINES_SUCCESS)
-    {
-        return ble_scan_result;
-    }
-
-    strcpy(nordic_uart_service_uuid.value, NORDIC_UART_SERVICE_UUID);
-    strcpy(nordic_uart_char_rx.value, NORDIC_UART_CHAR_RX);
-    strcpy(nordic_uart_char_tx.value, NORDIC_UART_CHAR_TX);
 
     if (ble_config == NULL)
     {
@@ -608,7 +646,16 @@ int8_t ble_connect(struct ble_peripheral_info *ble_config)
         return PLATFORM_BLE_TX_NOTIFY_FAILED;
     }
 
-    circular_buffer_init(&ble_cbuf, COM_READ_BUFF);
+    /* Initialize the circular buffer for BLE read operations */
+    if(ble_config != NULL && ble_config->rx_buffer_size > 0)
+    {
+        circular_buffer_init(&ble_cbuf, ble_config->rx_buffer_size);
+    }
+    else
+    {
+        circular_buffer_init(&ble_cbuf, BLE_COM_READ_BUFF);
+    }
+
     return COINES_SUCCESS;
 }
 
@@ -633,7 +680,7 @@ int8_t ble_write(void *buffer, uint32_t n_bytes)
         return PLATFORM_BLE_WRITE_FAILED;
     }
 
-    if (((uint8_t*)buffer)[0] == PROTO_WRITE_CMD)
+    if (((uint8_t*)buffer)[0] == PROTO_WRITE_CMD_HEADER)
     {
         memcpy(&expected_write_data_length, (uint8_t*)buffer + PROTO_LENGTH_POS, PROTO_LENGTH_BYTES);
         is_write_data_chunked = (expected_write_data_length != n_bytes);
@@ -661,16 +708,17 @@ int8_t ble_read(void *buffer, uint32_t n_bytes, uint32_t *n_bytes_read)
     uint32_t filled_buffer_space = 0;
     int8_t result = COINES_SUCCESS;
 
+    memset(buffer, 0, n_bytes);
+
     if (!is_ble_peripheral_connected)
     {
         return PLATFORM_BLE_PERIPHERAL_NOT_CONNECTED;
     }
 
-    if(circular_buffer_is_empty(&ble_cbuf))
+    if (circular_buffer_is_empty(&ble_cbuf))
     {
         return PLATFORM_BLE_NO_DATA_TO_READ;
     }
-
     /* If the requested data length is greater than filled bytes then send filled bytes */
     filled_buffer_space = circular_buffer_size(&ble_cbuf);
 
@@ -686,7 +734,8 @@ int8_t ble_read(void *buffer, uint32_t n_bytes, uint32_t *n_bytes_read)
     /* Read from buffer */
     *n_bytes_read = bytes_to_read;
     result = circular_buffer_get(&ble_cbuf, (uint8_t*)buffer, bytes_to_read);
-    if(result != COINES_SUCCESS){
+    if (result != COINES_SUCCESS)
+    {
         return PLATFORM_BLE_READ_FAILED;
     }
 
@@ -699,12 +748,9 @@ int8_t ble_read(void *buffer, uint32_t n_bytes, uint32_t *n_bytes_read)
  */
 int8_t ble_close(void)
 {
-    int8_t error_code = COINES_SUCCESS; 
+    int8_t error_code = COINES_SUCCESS;
 
-    // (void)simpleble_peripheral_unsubscribe(selected_peripheral, nordic_uart_service_uuid, nordic_uart_char_tx);
-    // error_code = simpleble_peripheral_disconnect(selected_peripheral);
-	is_ble_peripheral_connected = false;
-	ble_scan_completed = false;
+    simpleble_peripheral_disconnect(selected_peripheral);
     if (error_code != COINES_SUCCESS)
     {
         clean_on_exit();
@@ -713,8 +759,9 @@ int8_t ble_close(void)
         return PLATFORM_BLE_DISCONNECT_FAILED;
     }
 
-    circular_buffer_free_space(&ble_cbuf);
+    reset_ble_state();
     printf("\nBLE connection status: Disconnected\n");
+
     return COINES_SUCCESS;
 }
 
@@ -728,7 +775,6 @@ int8_t ble_is_disconnected(void)
     {
         return PLATFORM_BLE_PERIPHERAL_NOT_CONNECTED;
     }
-    
+
     return COINES_SUCCESS;
 }
-

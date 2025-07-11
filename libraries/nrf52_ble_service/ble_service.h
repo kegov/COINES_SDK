@@ -149,6 +149,8 @@ void ble_service_init(ble_service_init_t* init_handle);
 size_t ble_service_nus_write(const void *buffer, size_t len);
 size_t ble_service_nus_read(void *buffer, size_t len);
 int8_t ble_service_battery_level_update(uint8_t battery_level,uint8_t len);
+void ble_sd_enable(void);
+void ble_sd_disable(void);
 void coines_yield(void);
 
 

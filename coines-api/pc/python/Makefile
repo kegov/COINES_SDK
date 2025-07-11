@@ -6,6 +6,11 @@ override COINES_BACKEND = COINES_PC
 COINES_INSTALL_PATH ?= ../../..
 COINES_PC_PATH = ../../coines-api/pc/coines_pc
 
+ifeq ($(OS),Windows_NT)
+# Enable logging of sent and received data.
+LOGGING ?= 0
+endif
+
 ifeq ($(COINES_BACKEND),COINES_PC)
     #--- Configure size based on the application need --#
     CBUFF_SIZE ?= 104857600 # 100MB
@@ -26,10 +31,13 @@ ifeq ($(COINES_BACKEND),COINES_PC)
     STREAM_RSP_TIMEOUT ?= 0 #Millisecond
     FIFO_STREAM_RSP_TIMEOUT ?= 0 #Millisecond
     #---------------------------------------------------------------------#
-    
-    CFLAGS += -DCIRCULAR_BUFFER_SIZE=$(CBUFF_SIZE) -DMQUEUE_DEPTH=$(MQUEUE_DEPTH) -DMQUEUE_PACKET_SIZE=$(MQUEUE_PACKET_SIZE) -DCOINES_BRIDGE_PROTOCOL 
-    CFLAGS += -DSTREAM_RSP_TIMEOUT=$(STREAM_RSP_TIMEOUT) -DFIFO_STREAM_RSP_TIMEOUT=$(FIFO_STREAM_RSP_TIMEOUT)
-    
+endif
+
+ifeq ($(LOGGING), 1)
+    CFLAGS += -DLOGGING_ENABLED
+    # The log file will be created in the following directory with this name CB_log_<timestamp>.txt
+    LOG_PATH = "C://Logs//"
+    CFLAGS += -DLOG_PATH=\"$(LOG_PATH)\"
 endif
 
 # On using Software reset API(coines_soft_reset()) from COINES, After reset device jumps to the address specified in APP_START_ADDRESS.
@@ -156,116 +164,12 @@ $(COINES_INSTALL_PATH)/coines-api \
 
 OBJ_DIR = build/$(VARIANT)
 
-SRC_DIR = ..
 ifeq ($(COINES_BACKEND),COINES_PC)
-	C_SRCS_COINES += \
-	../coines_common.c \
-	$(COINES_PC_PATH)/error_handling/error_handling.c \
-	$(COINES_PC_PATH)/api/api.c \
-	$(COINES_PC_PATH)/api/board_specific/gpio/gpio.c \
-	$(COINES_PC_PATH)/api/board_specific/board_interface/board_interface.c \
-	$(COINES_PC_PATH)/api/delay/delay.c \
-	$(COINES_PC_PATH)/api/eeprom/eeprom.c \
-	$(COINES_PC_PATH)/api/stream/streaming.c \
-	$(COINES_PC_PATH)/protocol/protocol.c \
-	$(COINES_PC_PATH)/protocol/bridge/bridge_decoder.c \
-	$(COINES_PC_PATH)/protocol/bridge/bridge_encoder.c \
-	$(COINES_PC_PATH)/interface/interface.c \
-	$(COINES_PC_PATH)/platform/platform.c \
-    ../../libraries/mqueue_host/mqueue.c \
-    ../../libraries/circular_buffer/circular_buffer.c
-
-
-	ifeq ($(PLATFORM), PLATFORM_WINDOWS)
-		C_SRCS_COINES += \
-		$(COINES_PC_PATH)/platform/Windows/ble/simpleble-0.6.0/simpleble_lib_loader.c \
-		$(COINES_PC_PATH)/platform/Windows/ble/simpleble-0.6.0/ble_windows.c \
-		$(COINES_PC_PATH)/platform/Windows/serial/sync_comm/sync_comm_windows.c
-	else
-		C_SRCS_COINES += \
-		$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0/ble_unix.c \
-		$(COINES_PC_PATH)/platform/common/serial/sync_comm/sync_comm_unix.c
-	endif
-
-	C_SRCS_COINES += \
-	$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0/ble.c
-
-
-	INCLUDEPATHS_COINES += \
-	.. \
-    ../../libraries/mqueue_host \
-    ../../libraries/circular_buffer \
-	$(COINES_PC_PATH)/error_handling \
-	$(COINES_PC_PATH)/api \
-	$(COINES_PC_PATH)/api/board_specific/gpio \
-	$(COINES_PC_PATH)/api/board_specific/board_interface \
-	$(COINES_PC_PATH)/api/delay \
-	$(COINES_PC_PATH)/api/eeprom \
-	$(COINES_PC_PATH)/api/stream \
-	$(COINES_PC_PATH)/protocol \
-	$(COINES_PC_PATH)/protocol/bridge \
-	$(COINES_PC_PATH)/interface \
-	$(COINES_PC_PATH)/platform \
-	$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0 \
-	$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0/includes/simpleble \
-	$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0/includes/simpleble_c 
-
-
-	ifeq ($(PLATFORM), PLATFORM_WINDOWS)
-		INCLUDEPATHS_COINES += \
-		$(COINES_PC_PATH)/platform/Windows/ble/simpleble-0.6.0 \
-		$(COINES_PC_PATH)/platform/Windows/serial/sync_comm
-	else
-		INCLUDEPATHS_COINES += \
-		$(COINES_PC_PATH)/platform/common/serial/libusbp-1.0/includes \
-		$(COINES_PC_PATH)/platform/common/serial/sync_comm
-	endif
-
-	INCLUDEPATHS_COINES += \
-	$(COINES_PC_PATH)/platform/common/ble/simpleble-0.6.0
-
-else ifeq ($(COINES_BACKEND),COINES_BRIDGE)
-    C_SRCS_COINES += \
-    ../coines_common.c \
-    coines_bridge.c \
-    serial_com/serial_com.c \
-    ble_com/ble_com.c 
-
-    ifeq ($(PLATFORM), PLATFORM_WINDOWS)
-         C_SRCS_COINES += ble_com/simpleble_lib_loader.c
-    endif
-
-    INCLUDEPATHS_COINES += \
-    . \
-    .. \
-    serial_com \
-    ble_com \
-    ble_com/simpleble-0.6.0/simpleble \
-    ble_com/simpleble-0.6.0/simpleble_c
-
+	SRC_DIR = $(COINES_INSTALL_PATH)/coines-api/pc/coines_pc
+	include $(SRC_DIR)/coines_pc.mk
 else
-    CFLAGS += -D $(DRIVER)
-
-    C_SRCS_COINES += \
-    ../coines_common.c \
-    coines.c \
-    comm_intf/comm_intf.c \
-    comm_intf/comm_ringbuffer.c \
-    comm_driver/usb.c
-
-    ifeq ($(PLATFORM), PLATFORM_WINDOWS)
-        C_SRCS_COINES += \
-        comm_driver/legacy_usb/legacy_usb_support.c
-    endif
-
-    INCLUDEPATHS_COINES += \
-    . \
-    .. \
-    coines_api \
-    comm_intf \
-    comm_driver \
-    comm_driver/legacy_usb
-
+    SRC_DIR = $(COINES_INSTALL_PATH)/coines-api/pc
+	include $(SRC_DIR)/pc.mk
 endif
 
 C_SRCS = $(addprefix $(SRC_DIR)/,$(C_SRCS_COINES))

@@ -164,6 +164,13 @@ Perform sensor read and write operations
 
 board.close_comm_interface()
 ```
+## Notes:
+
+- For the **coines_scan_ble_devices()** API, the scan timeout parameter is bounded by predefined limits:
+  - Values < 1000 ms are automatically set to 1000 ms (minimum enforced timeout).
+  - Values > 30000 ms are automatically set to 30000 ms (maximum enforced timeout).
+
+
 
 ## Limitations
 

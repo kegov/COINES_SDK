@@ -84,6 +84,20 @@ static void reset_queue(void)
     mqueue[read_queue_idx].front = MQUEUE_EMPTY;
 }
 
+/**
+ * @brief Resets all queues except the non-streaming response queue.
+ *
+ */
+void mqueue_reset_queue(void)
+{
+    for (uint16_t q_idx = 1; q_idx < COINES_MAX_SENSOR_COUNT; q_idx++)
+    {
+        mqueue[q_idx].front = MQUEUE_EMPTY;
+        mqueue[q_idx].rear = MQUEUE_EMPTY;
+        mqueue_full_mask &= ~(1 << q_idx);
+    }
+}
+
 static bool is_queue_full(mqueue_t *p_mqueue)
 {
     if ((p_mqueue->front == p_mqueue->rear + 1) || (p_mqueue->front == 0 && (p_mqueue->rear == MQUEUE_DEPTH - 1)))

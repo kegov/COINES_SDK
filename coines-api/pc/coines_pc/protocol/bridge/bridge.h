@@ -47,7 +47,7 @@
 #define BRIDGE_PROTO_LENGTH_BYTES            2
 
 /** @brief Bridge write command */
-#define BRIDGE_WRITE_CMD                    165
+#define BRIDGE_WRITE_CMD_HEADER             165
 
 /** @brief Size of the bridge packet */
 #define BRIDGE_SERIAL_PACKET_SIZE           256
@@ -90,6 +90,15 @@
 
 /** @brief Streaming stop command response array */
 #define BRIDGE_STREAM_STOP_RESP_ARR           {0x5A, 0x5, 0x0, 0x1A, 0x00}
+
+/** @brief length of the bridge protocol timestamp bytes */
+#define BRIDGE_TIMESTAMP_LEN                     (6)
+
+/** @brief length of the bridge protocol packet count bytes */
+#define BRIDGE_PACKET_COUNT_LEN                  (4)
+
+/** @brief length of the bridge protocol stream write block reponse */
+#define BRIDGE_PROTO_STREAM_WRITE_BLOCK_RESP_LEN (1)
 
 /**********************************************************************************/
 /* function prototype declarations*/

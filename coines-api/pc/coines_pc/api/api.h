@@ -38,6 +38,9 @@
 /**********************************************************************************/
 #include <stdint.h>
 #include "coines.h"
+#ifdef LOGGING_ENABLED
+#include "logger.h"
+#endif
 
 /**********************************************************************************/
 /* macro definitions */
@@ -114,6 +117,8 @@ enum coines_cmds {
     COINES_CMD_ID_DMA_INT_STREAM_CONFIG,
     COINES_CMD_ID_I2C_WRITE_REG_16,
     COINES_CMD_ID_I2C_READ_REG_16,
+    COINES_CMD_ID_BLOCK_IO_POLL_STREAM_CONFIG,
+    COINES_CMD_ID_BLOCK_IO_INT_STREAM_CONFIG,
     COINES_N_CMDS
 };
 

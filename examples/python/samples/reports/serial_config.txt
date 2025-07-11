@@ -1,3 +1,4 @@
-COINESPY version - 1.0.1
-COINES SDK version: v2.9.1
-BoardInfo: HW/SW ID: 0x11/0x174
+COINESPY version - 1.0.5
+BoardInfo
+Software ID: v1.8.4
+Type of Board: 0x9

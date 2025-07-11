@@ -48,13 +48,13 @@ extern "C" {
 /* macro definitions */
 /**********************************************************************************/
 /*! Maximum allowed sensors to stream */
-#define STREAM_MAX_COUNT             UINT8_C(32)
+#define STREAM_MAX_COUNT                         UINT8_C(32)
 
 /*! Maximum IO numbers */
-#define STREAM_MAX_IO_COUNT          UINT8_C(32)
+#define STREAM_MAX_IO_COUNT                      UINT8_C(32)
 
 /*! Maximum data size to read from sensors */
-#define STREAM_MAX_PACKET_DATA_SIZE  UINT16_C(2048)
+#define STREAM_MAX_PACKET_DATA_SIZE              UINT16_C(2048)
 
 #ifdef DMA_STREAMING_SUPPORT
 #define DMA_WRITE_REG_LEN            1

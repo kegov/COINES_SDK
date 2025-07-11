@@ -1,3 +1,21 @@
+COINES_SDK v2.11 - (09-07-2025)
+
+Updates
+* Added the mtp_switch tool to transition from MTP mode to Application mode (flash start address).
+* Added two new Coines bridge commands for multi-block streaming with write block support, extending the existing read block support for both polling and interrupt modes.
+* COINES bridge now supports USB streaming at rates upto 6.4 kHz without data loss, with a maximum sensor read size of 50 bytes with single block read.
+* Added support for configuring BLE buffer size and scan timeout.
+* Enhanced user manual with instructions to trigger MTP format on Linux and macOS platforms.
+* Resolved issue with viewing a large number of files via MTP.
+* Fixed issue related to file overwrite in MTP.
+
+Known Limitations 
+* The mtp_switch tool does not support selecting a specific board when multiple MTP devices are connected.
+* BLE interface is disabled when USB streaming starts and re-enabled once streaming stops.
+* Copying files to MTP from the PC that exceed available memory causes the device to become unresponsive.
+* APP3.1 and nicla reports inaccurate battery percentage due to linear formula approach.
+
+
 COINES_SDK v2.10 - (20-11-2024)
 
 Updates

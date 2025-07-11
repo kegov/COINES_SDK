@@ -908,11 +908,10 @@ done:
 uint32_t flogfs_write(flog_write_file_t *file, uint8_t const *src, uint32_t nbytes) {
     uint32_t count = 0;
     flog_sector_nbytes_t bytes_written;
-
     flog_lock_fs();
     flash_lock();
 
-    while (nbytes) {
+    while (nbytes) { 
         if (nbytes >= file->sector_remaining_bytes) {
             bytes_written = file->sector_remaining_bytes;
             if (flog_commit_file_sector(file, src, file->sector_remaining_bytes) == FLOG_FAILURE) {
@@ -922,14 +921,16 @@ uint32_t flogfs_write(flog_write_file_t *file, uint8_t const *src, uint32_t nbyt
             src += bytes_written;
             nbytes -= bytes_written;
             count += bytes_written;
+
         } else {
+        
             memcpy(file->sector_buffer + file->offset, src, nbytes);
             count += nbytes;
             file->sector_remaining_bytes -= nbytes;
             file->offset += nbytes;
             file->bytes_in_block += nbytes;
             file->file_size += nbytes;
-            nbytes = 0;
+            nbytes = 0;  
         }
     }
 

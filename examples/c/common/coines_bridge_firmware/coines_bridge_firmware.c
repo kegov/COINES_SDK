@@ -39,6 +39,7 @@
 #include "coines_bridge_stream.h"
 #include "decoder.h"
 #include "stream.h"
+#include "circular_buffer_mcu.h"
 
 /**********************************************************************************/
 /* local macro definitions */
@@ -48,6 +49,8 @@
 #if (defined(MCU_APP30)||defined(MCU_APP31))
 #define LED_ACTIVITY_INDICATOR
 #endif
+
+// #define DEBUG
 
 /**********************************************************************************/
 /* global variables */
@@ -61,6 +64,16 @@ uint64_t transfer_timeout;
 
 /*! Flag to enable or disable logging to external flash. */
 bool ext_flash_log_enabled;
+
+/* Prevent interface switching during streaming */
+extern bool usb_stream_active;
+extern bool ble_stream_active;
+
+extern int8_t switch_pmic_cyclic_read(enum coines_pmic_read_type read_type);
+extern void pmic_dummy_read(void);
+
+circular_buffer_t stream_cbuf;
+uint8_t stream_buff[STREAM_BUFF_MAX_SIZE];
 
 /**********************************************************************************/
 /* static variables */
@@ -140,7 +153,7 @@ static int16_t spi_write_reg(uint8_t cmd,
                              uint16_t *resp_length);
 static int16_t spi_read_reg(uint8_t cmd, uint8_t *payload, uint16_t payload_length, uint8_t *resp,
                             uint16_t *resp_length);
-#if defined(MCU_APP30) || defined(MCU_APP31)
+#if defined(MCU_APP30) || defined(MCU_APP31) || defined(MCU_HEAR3X)
 static int16_t spi_write_16bit_reg(uint8_t cmd,
                              uint8_t *payload,
                              uint16_t payload_length,
@@ -183,15 +196,21 @@ static void update_intf(void)
 {
     if (coines_intf_connected(COINES_COMM_INTF_BLE))
     {
-        comm_intf = COINES_COMM_INTF_BLE;
-        led = COINES_LED_BLUE;
-        intf_connected = true;
+        if (!usb_stream_active)
+        {
+            comm_intf = COINES_COMM_INTF_BLE;
+            led = COINES_LED_BLUE;
+            intf_connected = true;
+        }   
     }
     else
     {
-        comm_intf = COINES_COMM_INTF_SERIAL;
-        led = COINES_LED_GREEN;
-        intf_connected = true;
+        if (!ble_stream_active)
+        {
+            comm_intf = COINES_COMM_INTF_SERIAL;
+            led = COINES_LED_GREEN;
+            intf_connected = true;
+        }
     }
 }
 
@@ -386,7 +405,7 @@ int main(void)
     cbt.cmd_callback[COINES_CMD_ID_I2C_READ_REG] = (coines_cmd_callback)i2c_read_reg;
     cbt.cmd_callback[COINES_CMD_ID_SPI_WRITE_REG] = (coines_cmd_callback)spi_write_reg;
     cbt.cmd_callback[COINES_CMD_ID_SPI_READ_REG] = (coines_cmd_callback)spi_read_reg;
-#if defined(MCU_APP30) || defined(MCU_APP31)
+#if defined(MCU_APP30) || defined(MCU_APP31) || defined(MCU_HEAR3X)
     cbt.cmd_callback[COINES_CMD_ID_SPI_WRITE_REG_16] = (coines_cmd_callback)spi_write_16bit_reg;
     cbt.cmd_callback[COINES_CMD_ID_SPI_READ_REG_16] = (coines_cmd_callback)spi_read_16bit_reg;
     cbt.cmd_callback[COINES_CMD_ID_I2C_WRITE_REG_16] = (coines_cmd_callback)i2c_write_16bit_reg;
@@ -395,6 +414,8 @@ int main(void)
     cbt.cmd_callback[COINES_CMD_ID_POLL_STREAM_COMMON] = (coines_cmd_callback)poll_streaming_common;
     cbt.cmd_callback[COINES_CMD_ID_POLL_STREAM_CONFIG] = (coines_cmd_callback)poll_streaming_config;
     cbt.cmd_callback[COINES_CMD_ID_INT_STREAM_CONFIG] = (coines_cmd_callback)int_streaming_config;
+    cbt.cmd_callback[COINES_CMD_ID_BLOCK_IO_POLL_STREAM_CONFIG] = (coines_cmd_callback)poll_streaming_config;
+    cbt.cmd_callback[COINES_CMD_ID_BLOCK_IO_INT_STREAM_CONFIG] = (coines_cmd_callback)int_streaming_config;
     cbt.cmd_callback[COINES_CMD_ID_STREAM_START_STOP] = (coines_cmd_callback)streaming_start_stop;
     cbt.cmd_callback[COINES_CMD_ID_SOFT_RESET] = (coines_cmd_callback)soft_reset;
     cbt.cmd_callback[COINES_CMD_ID_SHUTTLE_EEPROM_WRITE] = (coines_cmd_callback)shuttle_eeprom_write;
@@ -431,6 +452,16 @@ int main(void)
 
             transmit_streaming_rsp();
 
+#if defined(MCU_APP31) || defined(MCU_HEAR3X) 
+            if (usb_stream_active)
+            {
+                /* When streaming is initiated using the USB interface for improved performance, 
+                avoid executing pmic_cyclic_read(), which retrieves battery percentage and fault information. 
+                This is unnecessary when the device is connected via USB. Instead, perform a dummy read 
+                to prevent the watchdog timer from triggering a reset. */
+                pmic_dummy_read();   
+            }     
+#endif   
         }
     }
 }
@@ -482,6 +513,7 @@ static int16_t get_board_info_callback(uint8_t cmd,
     struct coines_board_info board_info = { 0 };
     int16_t rslt;
     uint8_t read_index = 0;
+    int verion_info = ((uint16_t)SOFTWARE_VERSION_MAJOR << 12) | ((uint16_t)SOFTWARE_VERSION_MINOR << 6) | (uint16_t)SOFTWARE_VERSION_PATCH;
 
     if ((payload == NULL) || (resp == NULL) || (resp_length == NULL))
     {
@@ -494,8 +526,8 @@ static int16_t get_board_info_callback(uint8_t cmd,
         read_index = COINES_PROTO_PAYLOAD_POS;
         resp[read_index++] = (uint8_t) (board_info.hardware_id);
         resp[read_index++] = (uint8_t) (board_info.hardware_id >> 8);
-        resp[read_index++] = (uint8_t) ((SOFTWARE_VERSION_MINOR & 0x0F) << 4) | (SOFTWARE_VERSION_PATCH & 0x0F);
-        resp[read_index++] = (uint8_t) (SOFTWARE_VERSION_MAJOR & 0xFF);
+        resp[read_index++] = (uint8_t) (verion_info & 0xFF);
+        resp[read_index++] = (uint8_t) ((verion_info >> 8) & 0xFF);
         resp[read_index++] = (uint8_t) (board_info.board);
         resp[read_index++] = (uint8_t) (board_info.shuttle_id);
         resp[read_index++] = (uint8_t) (board_info.shuttle_id >> 8);
@@ -964,7 +996,7 @@ static int16_t spi_read_reg(uint8_t cmd, uint8_t *payload, uint16_t payload_leng
     return COINES_SUCCESS;
 }
 
-#if defined(MCU_APP30) || defined(MCU_APP31)
+#if defined(MCU_APP30) || defined(MCU_APP31) || defined(MCU_HEAR3X)
 /*!
  *  @brief This API is used to write 16-bit register data on the I2C device.
  *
@@ -1143,7 +1175,7 @@ static int16_t spi_read_16bit_reg(uint8_t cmd, uint8_t *payload, uint16_t payloa
 
     return COINES_SUCCESS;
 }
-#endif /* if defined(MCU_APP30) || defined(MCU_APP31) */
+#endif /* if defined(MCU_APP30) || defined(MCU_APP31) || defined(MCU_HEAR3X)*/
 
 /*!
  *  @brief This API is used to trigger the softreset.
