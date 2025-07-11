@@ -1,7 +1,7 @@
 TARGET ?= PC
 USE_FREERTOS?=0
 
-# COMPort name to download the binary
+# COMPort name to download the binary 
 COM_PORT ?=
 
 # On using Software reset API(coines_soft_reset()) from COINES_SDK , After reset device jumps to the address specified in APP_START_ADDRESS.
